@@ -11,7 +11,6 @@
        time the cronjob runs.
 * Download files with a temporary extension, then move them into place when done.
 * Support logging as JSON.
-* `--mirror-url` argument for `download` subcommand.
 
 
 ## Might do

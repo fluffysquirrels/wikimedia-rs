@@ -48,6 +48,20 @@ pub struct Args {
     /// Overwrite existing downloaded files. By default this will fail with an error.
     #[arg(long, default_value_t = false)]
     overwrite: bool,
+
+    /// Specify the URL of a mirror to download job files from. Only supports http: and https: URLs.
+    ///
+    /// If not present tries to read the environment variable `WMD_MIRROR_URL`.
+    ///
+    /// Examples:
+    ///   * https://dumps.wikimedia.org
+    ///   * https://ftp.acc.umu.se/mirror/wikimedia.org/dumps
+    ///
+    /// Note that only job files are downloaded from this mirror, metadata files are downloaded from https://dumps.wikimedia.org to ensure we get the freshest data.
+    ///
+    /// To find a mirror, see https://meta.wikimedia.org/wiki/Mirroring_Wikimedia_project_XML_dumps#Current_mirrors
+    #[arg(long, env = "WMD_MIRROR_URL")]
+    mirror_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -268,7 +282,7 @@ async fn download_job_file(
 
     let url =
         format!("{mirror_url}{file_rel_url}",
-                mirror_url = "https://ftp.acc.umu.se/mirror/wikimedia.org/dumps",
+                mirror_url = &*args.mirror_url,
                 file_rel_url = file_meta.url);
 
     let file_name = file_meta.url.split('/').last()

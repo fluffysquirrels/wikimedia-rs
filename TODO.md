@@ -11,7 +11,7 @@
        time the cronjob runs.
 * Download files with a temporary extension, then move them into place when done.
 * Support logging as JSON.
-
+* Validate dump name, job name to have no relative paths, path traversal.
 
 ## Might do
 
@@ -29,4 +29,3 @@
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span
 * Unit tests for file relative URL validation
-* Validate dump name, job name to have no relative paths, path traversal.

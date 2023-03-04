@@ -8,12 +8,12 @@ Initial goals:
   deleted (perhaps keep the latest 2 dumps).
 
 The tool should take a parameter for the dump name to retrieve
-(`enwiki` for English Wikipedia), so can easily be used for other dumps.
+(`enwiki` for English Wikipedia), so it can easily be used for other dumps.
 
 * Steps:
     * Download dump html index page: <https://dumps.wikimedia.org/enwiki/>
     * Scrape the links on it to subdirectories
-    * Choose the latest date named link
+    * Choose the latest date-named link
     * Under a date directory there's a `dumpstatus.json` file with some metadata  
       e.g. <https://dumps.wikimedia.org/enwiki/20230301/dumpstatus.json>  
       Under '.jobs.metacurrentdumprecombine' there is:

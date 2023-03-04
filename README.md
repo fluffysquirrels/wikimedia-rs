@@ -66,3 +66,4 @@ These are approximately the steps the `download` subcommand runs:
 * HTML page with links to all dumps: <https://dumps.wikimedia.org/backup-index-bydb.html>
 * <https://en.wikipedia.org/wiki/Wikipedia:Database_download>
 * Torrents (out of date): <https://meta.wikimedia.org/wiki/Data_dump_torrents#English_Wikipedia>
+* <https://meta.wikimedia.org/wiki/Data_dumps/FAQ>

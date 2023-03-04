@@ -10,7 +10,6 @@
     *  Downloads fail. Retry automatically after a short delay or next
        time the cronjob runs.
 * Download files with a temporary extension, then move them into place when done.
-* Support logging as JSON.
 * Validate dump name, job name to have no relative paths, path traversal.
 
 ## Might do

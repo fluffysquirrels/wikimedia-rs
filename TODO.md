@@ -10,8 +10,9 @@
     *  Downloads fail. Retry automatically after a short delay or next
        time the cronjob runs.
 * Download files with a temporary extension, then move them into place when done.
-* `--overwrite` argument for `download` subcommand.
 * Support logging as JSON.
+* `--mirror-url` argument for `download` subcommand.
+
 
 ## Might do
 

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use sha1::{Sha1, Digest};
 use std::{
     collections::BTreeMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::Duration,
 };
 use tokio::io::AsyncWriteExt;
@@ -44,6 +44,10 @@ pub struct Args {
     /// If not present tries to read the environment variable `WMD_OUT_DIR`.
     #[arg(long, env = "WMD_OUT_DIR")]
     out_dir: PathBuf,
+
+    /// Overwrite existing downloaded files. By default this will fail with an error.
+    #[arg(long, default_value_t = false)]
+    overwrite: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,11 +115,13 @@ pub async fn main(args: Args) -> Result<()> {
     }
 
     if job_status.status != "done" {
-        return Err(anyhow::Error::msg(format!("Job status is not 'done' status={status} job_name={job_name} version={ver} dump_name={dump_name}", status = job_status.status)));
+        return Err(anyhow::Error::msg(format!("Job status is not 'done' status={status} job={job_name} version={ver} dump={dump_name}", status = job_status.status)));
     }
 
     for file_meta in job_status.files.values() {
-        download_job_file(&client, &*args.out_dir, dump_name, ver, job_name, file_meta).await?;
+        download_job_file(&client, &args, ver, file_meta).await
+            .with_context(|| format!("while downloading job file dump={dump_name} version={ver} job={job_name} file={file_rel_url}",
+                                     file_rel_url = &*file_meta.url))?;
     }
 
     Ok(())
@@ -224,10 +230,8 @@ async fn get_dump_version_status(
 #[tracing::instrument(level = "trace", skip(client))]
 async fn download_job_file(
     client: &reqwest::Client,
-    out_dir: &Path,
-    dump_name: &str,
+    args: &Args,
     ver: &str,
-    job_name: &str,
     file_meta: &FileMetadata
 ) -> Result<()> {
     let mut rel_segments = file_meta.url.split('/');
@@ -264,13 +268,14 @@ async fn download_job_file(
 
     let url =
         format!("{mirror_url}{file_rel_url}",
-                // TODO: Make mirror_url a CLI argument
                 mirror_url = "https://ftp.acc.umu.se/mirror/wikimedia.org/dumps",
                 file_rel_url = file_meta.url);
 
     let file_name = file_meta.url.split('/').last()
         .expect("already verified segments is not empty");
-    let file_out_path = out_dir.join(format!("{dump_name}/{ver}/{job_name}/{file_name}"));
+    let file_out_path = args.out_dir.join(format!("{dump_name}/{ver}/{job_name}/{file_name}",
+                                                  dump_name = &*args.dump_name,
+                                                  job_name = &*args.job_name));
     let file_out_dir_path = file_out_path.parent().expect("file_out_path.parent() not None");
     std::fs::create_dir_all(&*file_out_dir_path)?;
 
@@ -280,11 +285,16 @@ async fn download_job_file(
         expected_len = file_meta.size,
         "download_job_file starting");
 
-    let mut file = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true) // TODO truncate on CLI argument `--overwrite`
-        .open(file_out_path)
-        .await?;
+    let mut file_open_options = tokio::fs::OpenOptions::new();
+    file_open_options.write(true);
+    if args.overwrite {
+        file_open_options.create(true)
+                         .truncate(true);
+    } else {
+        file_open_options.create_new(true);
+    }
+    let mut file = file_open_options.open(file_out_path)
+                                    .await?;
 
     let download_res = client.get(url.clone())
         .send()

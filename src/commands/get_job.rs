@@ -1,4 +1,3 @@
-// use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, JsonOutputArg, VersionSpecArg},
     http,
@@ -7,7 +6,7 @@ use crate::{
     types::{JobOutput, JobStatus},
 };
 
-/// Get a list of dump jobs
+/// Get data about a dump version's jobs.
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
     #[clap(flatten)]

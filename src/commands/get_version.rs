@@ -5,7 +5,7 @@ use crate::{
     Result,
 };
 
-/// Get a list of dump jobs
+/// Get data about what versions are available for a dump.
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
     #[clap(flatten)]

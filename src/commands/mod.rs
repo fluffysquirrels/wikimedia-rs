@@ -1,3 +1,3 @@
 pub mod download;
-pub mod get_jobs;
-pub mod get_versions;
+pub mod get_job;
+pub mod get_version;

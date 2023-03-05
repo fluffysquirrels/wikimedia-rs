@@ -56,6 +56,10 @@ pub async fn main(args: Args) -> Result<()> {
         for (job_name, job_status) in jobs.iter() {
             let job = JobOutput {
                 name: job_name.clone(),
+                files_size: job_status.files.values()
+                                            .map(|file_info| file_info.size)
+                                            .sum(),
+                files_count: job_status.files.len(),
                 status: job_status.clone(),
             };
             serde_json::to_writer_pretty(&std::io::stdout(), &job)?;

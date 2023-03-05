@@ -36,6 +36,12 @@ pub struct FileMetadata {
 pub struct JobOutput {
     pub name: String,
 
+    /// Sum of the sizes of each file.
+    pub files_size: u64,
+
+    /// Count of files.
+    pub files_count: usize,
+
     #[serde(flatten)]
     pub status: JobStatus,
 }

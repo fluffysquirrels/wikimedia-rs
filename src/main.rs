@@ -1,5 +1,7 @@
 mod args;
 mod commands;
+mod operations;
+mod types;
 
 use clap::Parser;
 use tracing::Level;

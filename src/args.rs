@@ -1,5 +1,9 @@
-use crate::types::{Version, VersionSpec};
-use regex::Regex;
+use crate::{
+    types::{Version, VersionSpec},
+    UserRegex,
+};
+use regex::{Regex};
+use std::str::FromStr;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct CommonArgs {}
@@ -23,7 +27,7 @@ pub struct VersionSpecArg {
     pub value: VersionSpec,
 }
 
-impl std::str::FromStr for VersionSpec {
+impl FromStr for VersionSpec {
     type Err = clap::Error;
 
     fn from_str(s: &str) -> std::result::Result<VersionSpec, clap::Error> {
@@ -51,6 +55,15 @@ pub struct JobNameArg {
     /// finally uses `metacurrentdumprecombine` as a default.
     #[arg(id = "job", long = "job", default_value = "metacurrentdumprecombine", env = "WMD_JOB")]
     pub value: String,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct FileNameRegexArg {
+    /// A regex to filter the file names to process from a job.
+    ///
+    /// The regex syntax used is from the `regex` crate, see their documentation: https://docs.rs/regex/latest/regex/#syntax
+    #[arg(id = "file-name-regex", long="file-name-regex")]
+    pub value: Option<UserRegex>,
 }
 
 #[derive(clap::Args, Clone, Debug)]

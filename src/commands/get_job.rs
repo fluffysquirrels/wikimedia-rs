@@ -38,8 +38,10 @@ pub async fn main(args: Args) -> Result<()> {
     let jobs: Vec<(String, JobStatus)> = match args.job_name.as_ref() {
         Some(job_name) => {
             let Some(job_status) = ver_status.jobs.get(job_name) else {
-                return Err(anyhow::Error::msg(format!("No status found for job job_name={job_name} version={ver} dump_name={dump_name}",
-                                                      ver = ver.0)));
+                return Err(anyhow::Error::msg(format!(
+                    "No status found for job job_name={job_name} version={ver} \
+                     dump_name={dump_name}",
+                    ver = ver.0)));
             };
             vec![(job_name.clone(), job_status.clone())]
         },

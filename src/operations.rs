@@ -4,7 +4,8 @@ use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
     Result,
-    types::{DumpVersionStatus, FileMetadata, Version, VersionSpec},
+    types::{DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
+    UserRegex,
 };
 use regex::Regex;
 use sha1::{Sha1, Digest};
@@ -42,7 +43,8 @@ pub async fn get_dump_versions(
 
     if !res_code.is_success() {
         return Err(anyhow::Error::msg(
-            format!("HTTP response error fetching dump versions url={url} response_code={res_code_int} response_code_str={res_code_str}")));
+            format!("HTTP response error fetching dump versions url={url} \
+                     response_code={res_code_int} response_code_str={res_code_str}")));
     }
 
     let doc = scraper::Html::parse_document(&*res_text);
@@ -130,13 +132,64 @@ pub async fn get_dump_version_status(
 
     if !res_code.is_success() {
         return Err(anyhow::Error::msg(
-            format!("HTTP response error fetching dump version status url={url} response_code={res_code_int} response_code_str={res_code_str}")));
+            format!("HTTP response error fetching dump version status url={url} \
+                     response_code={res_code_int} response_code_str={res_code_str}")));
     }
 
     let status: DumpVersionStatus = serde_json::from_str(&*res_text)
         .with_context(|| format!("Getting dump version status url={url}"))?;
 
     Ok((ver.clone(), status))
+}
+
+#[tracing::instrument(level = "trace", skip(client))]
+pub async fn get_job_status(
+    client: &reqwest::Client,
+    dump_name: &DumpNameArg,
+    version_spec: &VersionSpec,
+    job_name: &JobNameArg,
+) -> Result<(Version, JobStatus)> {
+    let (ver, ver_status) = get_dump_version_status(&client, &dump_name, version_spec).await?;
+
+    let Some(job_status) = ver_status.jobs.get(&job_name.value) else {
+        return Err(anyhow::Error::msg(format!("No status found for job dump_name={dump_name} version={ver} job_name={job_name}",
+                                              dump_name = dump_name.value,
+                                              ver = ver.0,
+                                              job_name = job_name.value)));
+    };
+
+    if tracing::enabled!(Level::TRACE) {
+        tracing::trace!(job_status = format!("{:#?}", job_status), "Job status");
+    }
+
+    if job_status.status != "done" {
+        return Err(anyhow::Error::msg(format!("Job status is not 'done' status={status} dump={dump_name} version={ver} job={job_name}",
+                                              status = job_status.status,
+                                              dump_name = dump_name.value,
+                                              ver = ver.0,
+                                              job_name = job_name.value)));
+    }
+
+    Ok((ver, job_status.clone()))
+}
+
+#[tracing::instrument(level = "trace", skip(client), ret)]
+pub async fn get_file_infos(
+    client: &reqwest::Client,
+    dump_name: &DumpNameArg,
+    version_spec: &VersionSpec,
+    job_name: &JobNameArg,
+    file_name_regex: Option<&UserRegex>,
+) -> Result<(Version, Vec<(String, FileMetadata)>)> {
+    let (ver, job_status) = get_job_status(&client, dump_name,
+                                           version_spec, job_name).await?;
+
+    let files: Vec<(String, FileMetadata)> = match file_name_regex {
+        None => job_status.files.into_iter().collect(),
+        Some(re) => job_status.files.into_iter().filter(|kv| re.0.is_match(&*kv.0)).collect(),
+    };
+
+    Ok((ver, files))
 }
 
 #[tracing::instrument(level = "trace", skip(client))]
@@ -226,7 +279,9 @@ pub async fn download_job_file(
 
     if !download_res_code.is_success() {
         return Err(anyhow::Error::msg(
-            format!("HTTP response error downloading job file url={url} response_code={download_res_code_int} response_code_str={download_res_code_str}")));
+            format!("HTTP response error downloading job file url={url} \
+                     response_code={download_res_code_int} \
+                     response_code_str={download_res_code_str}")));
     }
 
     let mut bytes_stream = download_res.bytes_stream();
@@ -250,7 +305,9 @@ pub async fn download_job_file(
     tracing::debug!("download_job_file download complete");
 
     if finishing_len != file_meta.size {
-        return Err(anyhow::Error::msg(format!("Download job file was the wrong size url={url} expected_len={expected} finishing_len={finishing_len}", expected = file_meta.size)))
+        return Err(anyhow::Error::msg(format!(
+            "Download job file was the wrong size url={url} expected_len={expected} \
+             finishing_len={finishing_len}", expected = file_meta.size)))
     }
 
     let sha1_hash = sha1_hasher.finalize();
@@ -262,7 +319,8 @@ pub async fn download_job_file(
             let expected_sha1 = expected_sha1.to_lowercase();
             if sha1_hash_hex != expected_sha1 {
                 return Err(anyhow::Error::msg(
-                    format!("Bad SHA1 hash for downloaded job file url={url} expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
+                    format!("Bad SHA1 hash for downloaded job file url={url} \
+                             expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
                             computed_sha1 = sha1_hash_hex)));
             }
 

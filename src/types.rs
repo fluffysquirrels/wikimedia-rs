@@ -38,6 +38,14 @@ pub struct JobOutput {
     pub status: JobStatus,
 }
 
+#[derive(Debug, Serialize)]
+pub struct FileInfoOutput {
+    pub name: String,
+
+    #[serde(flatten)]
+    pub metadata: FileMetadata,
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Version(pub String);
 

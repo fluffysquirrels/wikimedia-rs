@@ -2,8 +2,6 @@
 
 ## Must do before publishing
 
-* Option to download only some files from a job
-* Subcommand to list files for a job
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
 * Download files with a temporary extension, then move them into place when done.
@@ -24,6 +22,8 @@
 
 ## Might do
 
+* Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
+* Cache metadata
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation

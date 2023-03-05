@@ -1,10 +1,12 @@
 mod args;
 mod commands;
 mod http;
+mod user_regex;
 mod operations;
 mod types;
 
 use clap::Parser;
+use crate::user_regex::UserRegex;
 use tracing::Level;
 use tracing_subscriber::{
     EnvFilter,
@@ -26,6 +28,7 @@ struct Args {
 #[derive(clap::Subcommand, Clone, Debug)]
 enum Command {
     Download(commands::download::Args),
+    GetFileInfo(commands::get_file_info::Args),
     GetJob(commands::get_job::Args),
     GetVersion(commands::get_version::Args),
 }
@@ -53,11 +56,12 @@ async fn main() -> Result<()> {
     }
 
     if tracing::enabled!(Level::DEBUG) {
-        tracing::debug!(args = tracing::field::debug(args.clone()), "parsed CLI args");
+        tracing::debug!(args = ?args.clone(), "parsed CLI args");
     }
 
     match args.command {
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
+        Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
     };

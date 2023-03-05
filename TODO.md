@@ -3,6 +3,9 @@
 ## Must do before publishing
 
 * Option to download only some files from a job
+* Subcommand to list jobs
+* Subcommand to list files for a job
+* Tidy up args to `operations::download_job_file`
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -20,6 +23,8 @@
 
 ## Might do
 
+* Subcommand to list dumps
+* Subcommand to list versions
 * Some kind of indexed lookup
     * bzip2 is very slow (12MB/s on my laptop)
     * Decompressed data would be faster to use, but 4-5x the size, so
@@ -78,11 +83,7 @@
     * https://github.com/gnosygnu/xowa
     * Java
     * Last release 2021-01, downloadable files are old ~2016
-* Subcommand to list dumps
-* Subcommand to list versions
-* Subcommand to list jobs
-* Subcommand to list files for a job
-* Set download rate limitb
+* Set download rate limit
 * More performant, elegant, featureful async streaming downloads.
     * Progress bar
     * Write while beginning next read.

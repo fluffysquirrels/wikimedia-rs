@@ -2,10 +2,16 @@
 
 ## Must do before publishing
 
+* Refactor `operations::download_file()`, it's far too big.
+* Subcommand to list dumps
+* Download files with a temporary extension, then move them into place when done.
+    * Re-use TempDir between file downloads (currently one per file).
+    * Probably add CLI arg `--keep-temp-dir` to keep TempDir on errors for inspection.
+    * Fix `--overwrite`. Probably switch to syncing properly.
+* WIP: Download subcommand verifies already downloaded files (verify size and SHA1)
+* Add brief syntax hints for `--file-name-regex`.
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
-* Improve downloads
-    * Download files with a temporary extension, then move them into place when done.
 * Use `lazy_static!` for Regex initialisation.
 * Subcommand to run from cron.
     * Summary at the end.
@@ -18,8 +24,6 @@
     *  Downloads fail. Retry automatically after a short delay or next
        time the cronjob runs.
 * Validate dump name, job name to have no relative paths, path traversal.
-* Subcommand / download mode to verify the hashes of downloaded files
-* Download mode that skips already downloaded files (perhaps verify size or SHA1)
 
 ## Might do
 
@@ -31,6 +35,7 @@
     * Refactor to make it re-usable. Separate crate?
     * Cancellation support
     * Progress bar
+        * Crate [`indicatif`](https://crates.io/crates/indicatif) looks good.
     * Configurable timeout
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
 * Cache metadata downloads
@@ -55,7 +60,6 @@
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
-* Subcommand to list dumps
 * Some kind of indexed lookup
     * bzip2 is very slow (12MB/s on my laptop)
     * Decompressed data would be faster to use, but 4-5x the size, so
@@ -125,3 +129,13 @@
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span
 * Unit tests for file relative URL validation
+
+## Done
+
+* Test existing file handling:
+    * [x] Not found
+    * [x] Not a file
+    * [x] Length OK, hash OK
+    * [x] Length OK, hash bad
+    * [x] Length OK, hash missing
+    * [x] Length wrong

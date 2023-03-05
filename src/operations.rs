@@ -202,7 +202,7 @@ pub async fn download_job_file(
     mirror_url: &str,
     file_meta: &FileMetadata,
     out_dir: &Path,
-    keep_temp_dir: bool,
+    temp_dir: &TempDir,
 ) -> Result<()> {
     let mut rel_segments = file_meta.url.split('/');
     let Some(first) = rel_segments.next() else {
@@ -377,7 +377,6 @@ pub async fn download_job_file(
 
     let file_out_dir_path = file_out_path.parent().expect("file_out_path.parent() not None");
 
-    let temp_dir = TempDir::create(&*out_dir, keep_temp_dir)?;
     let temp_file_path = temp_dir.path()?.join(&*file_name);
 
     tracing::info!(
@@ -473,8 +472,6 @@ pub async fn download_job_file(
     tracing::debug!(temp_file_path = %temp_file_path.display(),
                     file_out_path = %file_out_path.display(),
                     "Moving downloaded file from temp directory to output directory");
-
-    drop(temp_dir);
 
     Ok(())
 }

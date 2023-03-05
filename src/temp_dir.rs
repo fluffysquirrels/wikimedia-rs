@@ -2,6 +2,7 @@ use crate::Result;
 use hex::ToHex;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug)]
 pub struct TempDir {
     path: PathBuf,
     keep: bool,
@@ -17,6 +18,11 @@ impl TempDir {
                     pid = std::process::id(),
                     rand = rand::random::<[u8; 8]>()
                                 .encode_hex::<String>()));
+
+        tracing::debug!(temp_path = %temp_path.display(),
+                        keep,
+                        "TempDir::create");
+
         std::fs::create_dir_all(&*temp_path)?;
 
         Ok(TempDir {

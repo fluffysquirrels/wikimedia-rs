@@ -3,13 +3,8 @@
 ## Must do before publishing
 
 * Refactor `operations::download_file()`, it's far too big.
-* Subcommand to list dumps
 * Download files with a temporary extension, then move them into place when done.
     * Re-use TempDir between file downloads (currently one per file).
-    * Probably add CLI arg `--keep-temp-dir` to keep TempDir on errors for inspection.
-    * Fix `--overwrite`. Probably switch to syncing properly.
-* WIP: Download subcommand verifies already downloaded files (verify size and SHA1)
-* Add brief syntax hints for `--file-name-regex`.
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
 * Use `lazy_static!` for Regex initialisation.
@@ -27,6 +22,7 @@
 
 ## Might do
 
+* Add brief syntax hints for `--file-name-regex`.
 * Improve downloads
     * Set download rate limit
     * Retries
@@ -38,6 +34,7 @@
         * Crate [`indicatif`](https://crates.io/crates/indicatif) looks good.
     * Configurable timeout
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
+* Subcommand to list dumps
 * Cache metadata downloads
     * Save to `./out/cache`
     * Discard old cached files, options:

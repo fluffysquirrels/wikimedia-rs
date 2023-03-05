@@ -4,6 +4,7 @@ use crate::{
     http,
     operations,
     Result,
+    TempDir,
 };
 use std::path::PathBuf;
 
@@ -68,16 +69,20 @@ pub async fn main(args: Args) -> Result<()> {
         &args.job_name,
         args.file_name_regex.value.as_ref()).await?;
 
+    let temp_dir = TempDir::create(&*args.out_dir, args.keep_temp_dir)?;
+
     for (_file_name, file_meta) in files.iter() {
         operations::download_job_file(&client, &args.dump_name, &ver, &args.job_name,
                                       &*args.mirror_url, file_meta, &*args.out_dir,
-                                      args.keep_temp_dir).await
+                                      &temp_dir).await
             .with_context(|| format!(
                 "while downloading job file dump={dump_name} version={ver} job={job_name} \
                  file={file_rel_url}",
                 ver = ver.0,
                 file_rel_url = &*file_meta.url))?;
     }
+
+    drop(temp_dir);
 
     Ok(())
 }

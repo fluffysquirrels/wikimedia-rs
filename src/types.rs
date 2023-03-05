@@ -38,5 +38,11 @@ pub struct JobOutput {
     pub status: JobStatus,
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Version(pub String);
+
+#[derive(Clone, Debug)]
+pub enum VersionSpec {
+    Latest,
+    Version(Version),
+}

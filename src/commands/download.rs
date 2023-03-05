@@ -1,6 +1,6 @@
 use anyhow::Context;
 use crate::{
-    args::{CommonArgs, DumpNameArg, JobNameArg},
+    args::{CommonArgs, DumpNameArg, JobNameArg, VersionSpecArg},
     http,
     operations,
     Result,
@@ -16,6 +16,9 @@ pub struct Args {
 
     #[clap(flatten)]
     dump_name: DumpNameArg,
+
+    #[clap(flatten)]
+    version: VersionSpecArg,
 
     #[clap(flatten)]
     job_name: JobNameArg,
@@ -56,17 +59,8 @@ pub async fn main(args: Args) -> Result<()> {
 
     let client = http::client()?;
 
-    let mut vers = operations::get_dump_versions(&client, &args.dump_name).await?;
-    if vers.is_empty() {
-        return Err(anyhow::Error::msg(format!("No versions found for dump {dump_name}")));
-    }
-    vers.sort();
-    // Re-bind as immutable.
-    let vers = vers;
-
-    let ver = vers.last().expect("vers not empty");
-
-    let ver_status = operations::get_dump_version_status(&client, &args.dump_name, &ver).await?;
+    let (ver, ver_status) = operations::get_dump_version_status(&client, &args.dump_name,
+                                                                &args.version.value).await?;
 
     let Some(job_status) = ver_status.jobs.get(job_name) else {
         return Err(anyhow::Error::msg(format!("No status found for job job_name={job_name} version={ver} dump_name={dump_name}",
@@ -84,7 +78,7 @@ pub async fn main(args: Args) -> Result<()> {
     }
 
     for file_meta in job_status.files.values() {
-        operations::download_job_file(&client, &args.dump_name, ver, &args.job_name,
+        operations::download_job_file(&client, &args.dump_name, &ver, &args.job_name,
                                       &*args.mirror_url, file_meta, &*args.out_dir,
                                       args.overwrite).await
             .with_context(|| format!("while downloading job file dump={dump_name} version={ver} job={job_name} file={file_rel_url}",

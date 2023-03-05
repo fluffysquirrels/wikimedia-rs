@@ -5,10 +5,10 @@
 * Option to download only some files from a job
 * Subcommand to list files for a job
 * Subcommand to list versions
-* Specify a version with `--version`, still pick the latest by default.
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
 * Download files with a temporary extension, then move them into place when done.
+* Use `lazy_static!` for Regex initialisation.
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -25,6 +25,9 @@
 
 ## Might do
 
+* Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
+    * Separates concerns, creates potential for non-CLI uses.
+* Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
 * Subcommand to list dumps
 * Some kind of indexed lookup
     * bzip2 is very slow (12MB/s on my laptop)

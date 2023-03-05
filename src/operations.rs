@@ -4,7 +4,7 @@ use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
     Result,
-    types::{DumpVersionStatus, FileMetadata, JobStatus, Version},
+    types::{DumpVersionStatus, FileMetadata, Version, VersionSpec},
 };
 use regex::Regex;
 use sha1::{Sha1, Digest};
@@ -87,8 +87,25 @@ pub async fn get_dump_versions(
 pub async fn get_dump_version_status(
     client: &reqwest::Client,
     dump_name: &DumpNameArg,
-    ver: &Version,
-) -> Result<DumpVersionStatus> {
+    version_spec: &VersionSpec,
+) -> Result<(Version, DumpVersionStatus)> {
+
+    let ver = match version_spec {
+        VersionSpec::Version(ver) => ver.clone(),
+        VersionSpec::Latest => {
+            let mut vers = get_dump_versions(&client, dump_name).await?;
+            if vers.is_empty() {
+                return Err(anyhow::Error::msg(format!("No versions found for dump {dump_name}",
+                                                      dump_name = dump_name.value)));
+            }
+            vers.sort();
+            // Re-bind as immutable.
+            let vers = vers;
+
+            let ver = vers.last().expect("vers not empty");
+            ver.clone()
+        },
+    };
 
     let url = format!("https://dumps.wikimedia.org/{dump_name}/{ver}/dumpstatus.json",
                       dump_name = dump_name.value,
@@ -119,7 +136,7 @@ pub async fn get_dump_version_status(
     let status: DumpVersionStatus = serde_json::from_str(&*res_text)
         .with_context(|| format!("Getting dump version status url={url}"))?;
 
-    Ok(status)
+    Ok((ver.clone(), status))
 }
 
 #[tracing::instrument(level = "trace", skip(client))]

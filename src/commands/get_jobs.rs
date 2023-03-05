@@ -1,6 +1,6 @@
 // use anyhow::Context;
 use crate::{
-    args::{CommonArgs, DumpNameArg},
+    args::{CommonArgs, DumpNameArg, VersionSpecArg},
     http,
     operations,
     Result,
@@ -15,6 +15,9 @@ pub struct Args {
 
     #[clap(flatten)]
     dump_name: DumpNameArg,
+
+    #[clap(flatten)]
+    version: VersionSpecArg,
 
     /// The specific job name to get. By default information is returned about all jobs in the dump version.
     #[arg(long = "job")]
@@ -31,17 +34,8 @@ pub async fn main(args: Args) -> Result<()> {
 
     let client = http::client()?;
 
-    let mut vers = operations::get_dump_versions(&client, &args.dump_name).await?;
-    if vers.is_empty() {
-        return Err(anyhow::Error::msg(format!("No versions found for dump {dump_name}")));
-    }
-    vers.sort();
-    // Re-bind as immutable.
-    let vers = vers;
-
-    let ver = vers.last().expect("vers not empty");
-
-    let ver_status = operations::get_dump_version_status(&client, &args.dump_name, &ver).await?;
+    let(ver, ver_status) = operations::get_dump_version_status(&client, &args.dump_name,
+                                                               &args.version.value).await?;
 
     let jobs: Vec<(String, JobStatus)> = match args.job_name.as_ref() {
         Some(job_name) => {

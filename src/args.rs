@@ -52,3 +52,10 @@ pub struct JobNameArg {
     #[arg(id = "job", long = "job", default_value = "metacurrentdumprecombine", env = "WMD_JOB")]
     pub value: String,
 }
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct JsonOutputArg {
+    /// Print results to stdout as JSON. By default the data will be printed as text.
+    #[arg(id = "json", long = "json", default_value_t = false)]
+    pub value: bool,
+}

@@ -1,6 +1,6 @@
 // use anyhow::Context;
 use crate::{
-    args::{CommonArgs, DumpNameArg, VersionSpecArg},
+    args::{CommonArgs, DumpNameArg, JsonOutputArg, VersionSpecArg},
     http,
     operations,
     Result,
@@ -23,9 +23,8 @@ pub struct Args {
     #[arg(long = "job")]
     job_name: Option<String>,
 
-    /// Print results to stdout as JSON. By default the job names will be printed as text.
-    #[arg(long, default_value_t = false)]
-    json: bool
+    #[clap(flatten)]
+    json: JsonOutputArg,
 }
 
 #[tracing::instrument(level = "trace")]
@@ -52,7 +51,7 @@ pub async fn main(args: Args) -> Result<()> {
         }
     };
 
-    if args.json {
+    if args.json.value {
         for (job_name, job_status) in jobs.iter() {
             let job = JobOutput {
                 name: job_name.clone(),

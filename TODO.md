@@ -4,7 +4,6 @@
 
 * Option to download only some files from a job
 * Subcommand to list files for a job
-* Subcommand to list versions
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
 * Download files with a temporary extension, then move them into place when done.

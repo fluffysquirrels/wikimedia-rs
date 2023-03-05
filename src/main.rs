@@ -27,6 +27,7 @@ struct Args {
 enum Command {
     Download(commands::download::Args),
     GetJobs(commands::get_jobs::Args),
+    GetVersions(commands::get_versions::Args),
 }
 
 #[tokio::main]
@@ -58,6 +59,7 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
         Command::GetJobs(cmd_args) => commands::get_jobs::main(cmd_args).await?,
+        Command::GetVersions(cmd_args) => commands::get_versions::main(cmd_args).await?,
     };
 
     Ok(())

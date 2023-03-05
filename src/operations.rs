@@ -4,6 +4,7 @@ use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
     Result,
+    TempDir,
     types::{DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
     UserRegex,
 };
@@ -201,7 +202,7 @@ pub async fn download_job_file(
     mirror_url: &str,
     file_meta: &FileMetadata,
     out_dir: &Path,
-    overwrite: bool,
+    keep_temp_dir: bool,
 ) -> Result<()> {
     let mut rel_segments = file_meta.url.split('/');
     let Some(first) = rel_segments.next() else {
@@ -246,36 +247,164 @@ pub async fn download_job_file(
                                              dump_name = &*dump_name.value,
                                              ver = ver.0,
                                              job_name = &*job_name.value));
+
+    // Look for an existing file at the output path.
+    let existing_meta = file_out_path.metadata();
+    match existing_meta {
+        // File not found error, go ahead and download to the output path.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
+
+        // Report other errors.
+        Err(e) => {
+            return Err(anyhow::Error::new(e).context(format!(
+                "while checking for an existing file at the output path \
+                 file_out_path={file_out_path} \
+                 file_url={url}",
+                file_out_path = file_out_path.display())));
+        },
+
+        // Check existing file's metdata
+        Ok(existing_meta) => {
+            if !existing_meta.is_file() {
+                return Err(anyhow::Error::msg(format!(
+                    "While checking for an existing file at the output path, \
+                     found an item that's not a file. \
+                     file_out_path={file_out_path} \
+                     metadata={existing_meta:?} \
+                     file_url={url}",
+                    file_out_path = file_out_path.display())));
+            }
+
+            // Check existing file length
+            let expected_len = file_meta.size;
+            let existing_len = existing_meta.len();
+            if expected_len == existing_len {
+                // Check existing file SHA1 hash
+                match file_meta.sha1.as_ref() {
+                    // No SHA1 hash in metadata, warn and return OK assuming the download
+                    // succeeded.
+                    None => {
+                        tracing::warn!(file_len = expected_len,
+                                       file_path = %file_out_path.display(),
+                                       url,
+                                       "Existing file is the right size, but there's no SHA1 \
+                                        hash to check in the dump status file metadata.");
+                        return Ok(())
+                    },
+
+                    // SHA1 hash in metadata, check it matches the existing file's hash.
+                    Some(expected_sha1) => {
+                        let expected_sha1 = expected_sha1.to_lowercase();
+
+                        // Calculate SHA1 hash for existing file.
+                        let existing_file =
+                            tokio::fs::File::open(&*file_out_path)
+                                .await
+                                .with_context(
+                                    || format!("while opening an existing output file to check \
+                                                its SHA1 hash \
+                                                existing_file_path={file_out_path} \
+                                                url={url} \
+                                                expected_sha1={expected_sha1}",
+                                               file_out_path = file_out_path.display(),
+                                               ))?;
+                        let mut sha1_hasher = Sha1::new();
+                        let mut bytes_stream = tokio_util::io::ReaderStream::new(existing_file);
+                        while let Some(chunk) = bytes_stream.next().await {
+                            let chunk = chunk
+                                .with_context(|| format!(
+                                    "while reading a chunk of an existing output file to check \
+                                     its SHA1 hash \
+                                     existing_file_path={file_out_path} \
+                                     file_url={url}",
+                                    file_out_path = file_out_path.display()))?;
+                            tracing::trace!(chunk_len = chunk.len(),
+                                            "read existing file chunk to calculate SHA1 hash");
+                            sha1_hasher.update(&chunk);
+                        }
+                        let existing_sha1 = sha1_hasher.finalize();
+                        let existing_sha1_string = hex::encode(existing_sha1);
+
+                        if expected_sha1 == existing_sha1_string {
+                            // Existing file's SHA1 hash was correct, return Ok.
+                            tracing::debug!(file_len = expected_len,
+                                            file_path = %file_out_path.display(),
+                                            sha1 = expected_sha1,
+                                            url,
+                                            "Existing file OK: SHA1 hash and file size are \
+                                             correct.");
+                            return Ok(());
+                        } else {
+                            // Existing file's SHA1 hash was incorrect, delete it.
+                            tracing::warn!(file_len = expected_len,
+                                           file_path = %file_out_path.display(),
+                                           existing_sha1 = existing_sha1_string,
+                                           expected_sha1,
+                                           url,
+                                           "Existing file bad: file size correct but SHA1 hash \
+                                            was wrong. Deleting existing file.");
+                            std::fs::remove_file(&*file_out_path)
+                                .with_context(
+                                    || format!("while deleting existing file that had the wrong \
+                                                SHA1 hash \
+                                                file_out_path={file_out_path} \
+                                                existing_len={existing_len} \
+                                                existing_sha1={existing_sha1_string}
+                                                expected_sha1={expected_sha1} \
+                                                file_url={url}",
+                                               file_out_path = file_out_path.display()))?;
+                        }
+                    }, // check SHA1
+                } // match on whether we have a SHA1 in the file metadata.
+            } else {
+                // Existing file size does not match expected.
+                tracing::warn!(file_out_path = %file_out_path.display(),
+                               existing_len,
+                               expected_len,
+                               "Deleting existing file that was the wrong size");
+
+                std::fs::remove_file(&*file_out_path)
+                    .with_context(
+                        || format!("while deleting existing file that was the wrong size \
+                                    file_out_path={file_out_path} \
+                                    existing_len={existing_len} \
+                                    expected_len={expected_len} \
+                                    file_url={url}",
+                                   file_out_path = file_out_path.display()))?;
+            }
+        } // Check existing file's metadata
+    }; // match on result of retrieving existing file's metadata.
+
     let file_out_dir_path = file_out_path.parent().expect("file_out_path.parent() not None");
-    std::fs::create_dir_all(&*file_out_dir_path)?;
+
+    let temp_dir = TempDir::create(&*out_dir, keep_temp_dir)?;
+    let temp_file_path = temp_dir.path()?.join(&*file_name);
 
     tracing::info!(
         url,
         out_path = %file_out_path.display(),
+        out_temp_path = %temp_file_path.display(),
         expected_len = file_meta.size,
         "download_job_file starting");
 
-    let mut file_open_options = tokio::fs::OpenOptions::new();
-    file_open_options.write(true);
-    if overwrite {
-        file_open_options.create(true)
-                         .truncate(true);
-    } else {
-        file_open_options.create_new(true);
-    }
-    let mut file = file_open_options.open(file_out_path)
-                                    .await?;
+    std::fs::create_dir_all(&*file_out_dir_path)?;
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&*temp_file_path)
+        .await?;
 
     let download_res = client.get(url.clone())
-        .send()
-        .await?;
+                             .send()
+                             .await?;
     let download_res_code = download_res.status();
     let download_res_code_int = download_res_code.as_u16();
     let download_res_code_str = download_res_code.canonical_reason().unwrap_or("");
     tracing::debug!(url = url.clone(),
                    response_code = download_res_code_int,
                    response_code_str = download_res_code_str,
-                   "download job file status");
+                   "download_job_file HTTP status");
 
     if !download_res_code.is_success() {
         return Err(anyhow::Error::msg(
@@ -292,7 +421,11 @@ pub async fn download_job_file(
             .with_context(|| format!("while downloading a job file url={url}"))?;
         tracing::trace!(chunk_len = chunk.len(), "download_job_file chunk");
         sha1_hasher.update(&chunk);
-        tokio::io::copy(&mut chunk.as_ref(), &mut file).await?;
+        tokio::io::copy(&mut chunk.as_ref(), &mut file)
+            .await
+            .with_context(|| format!("while writing a downloaded chunk to disk \
+                                      url={url} file_path={temp_file_path}",
+                                     temp_file_path = temp_file_path.display()))?;
     }
 
     file.flush().await?;
@@ -314,7 +447,7 @@ pub async fn download_job_file(
     let sha1_hash_hex = hex::encode(sha1_hash);
 
     match file_meta.sha1.as_ref() {
-        None => tracing::warn!(url, "No SHA1 hash given for job file"),
+        None => tracing::warn!(url, "No expected SHA1 hash given for job file"),
         Some(expected_sha1) => {
             let expected_sha1 = expected_sha1.to_lowercase();
             if sha1_hash_hex != expected_sha1 {
@@ -328,6 +461,20 @@ pub async fn download_job_file(
                             "Downloaded file SHA1 hash matched the expected value");
         }
     }
+
+    tokio::fs::rename(&*temp_file_path, &*file_out_path)
+        .await
+        .with_context(|| format!("While moving a downloaded file from its temporary download \
+                                  directory to its target directory \
+                                  temp_path={temp_file_path} target_path={file_out_path}",
+                                 temp_file_path = temp_file_path.display(),
+                                 file_out_path = file_out_path.display()))?;
+
+    tracing::debug!(temp_file_path = %temp_file_path.display(),
+                    file_out_path = %file_out_path.display(),
+                    "Moving downloaded file from temp directory to output directory");
+
+    drop(temp_dir);
 
     Ok(())
 }

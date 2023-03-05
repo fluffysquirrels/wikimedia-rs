@@ -35,9 +35,9 @@ pub struct Args {
     #[arg(long, env = "WMD_OUT_DIR")]
     out_dir: PathBuf,
 
-    /// Overwrite existing downloaded files. By default this will fail with an error.
+    /// Keep the temporary directory where files are initially downloaded. By default this is deleted after use.
     #[arg(long, default_value_t = false)]
-    overwrite: bool,
+    keep_temp_dir: bool,
 
     /// Specify the URL of a mirror to download job files from. Only supports http: and https: URLs.
     ///
@@ -71,7 +71,7 @@ pub async fn main(args: Args) -> Result<()> {
     for (_file_name, file_meta) in files.iter() {
         operations::download_job_file(&client, &args.dump_name, &ver, &args.job_name,
                                       &*args.mirror_url, file_meta, &*args.out_dir,
-                                      args.overwrite).await
+                                      args.keep_temp_dir).await
             .with_context(|| format!(
                 "while downloading job file dump={dump_name} version={ver} job={job_name} \
                  file={file_rel_url}",

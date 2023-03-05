@@ -3,10 +3,14 @@ mod commands;
 mod http;
 mod user_regex;
 mod operations;
+mod temp_dir;
 mod types;
 
 use clap::Parser;
-use crate::user_regex::UserRegex;
+use crate::{
+    temp_dir::TempDir,
+    user_regex::UserRegex,
+};
 use tracing::Level;
 use tracing_subscriber::{
     EnvFilter,

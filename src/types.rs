@@ -24,6 +24,8 @@ pub struct JobStatus {
 pub struct FileMetadata {
     pub size: u64,
     pub url: String,
+
+    /// Expected SHA1 hash of the file's data, formatted as a lowercase hex string.
     pub sha1: Option<String>,
 
     #[allow(dead_code)] // Not used currently

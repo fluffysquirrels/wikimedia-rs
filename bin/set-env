@@ -1,0 +1,14 @@
+# Source this file to set envs for testing wikimedia-downloader
+#
+# Tested with bash and zsh.
+
+if test -n "$BASH" ; then script=$BASH_SOURCE
+elif test -n "$ZSH_NAME" ; then script=${(%):-%x}
+else script=$0
+fi
+
+readonly crate_dir="$( cd -- $(dirname "${script}")/..; pwd )";
+
+export RUST_LOG='wikimedia_downloader=debug'
+export WMD_MIRROR_URL='https://ftp.acc.umu.se/mirror/wikimedia.org/dumps'
+export WMD_OUT_DIR="${crate_dir}/out"

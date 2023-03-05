@@ -204,37 +204,7 @@ pub async fn download_job_file(
     out_dir: &Path,
     temp_dir: &TempDir,
 ) -> Result<()> {
-    let mut rel_segments = file_meta.url.split('/');
-    let Some(first) = rel_segments.next() else {
-        tracing::warn!(file_url = file_meta.url,
-                       "Bad file meta URL, no segments");
-        return Ok(());
-    };
-
-    if first.len() > 0 {
-        tracing::warn!(file_url = file_meta.url,
-                       "Bad file meta URL, missing initial '/'");
-        return Ok(());
-    }
-
-    // TODO: Use lazy_static!
-    let segment_re = Regex::new(r"^[-a-z_0-9A-Z.]+$").expect("parse regex");
-
-    for segment in rel_segments {
-        if !segment_re.is_match(segment) {
-            tracing::warn!(file_meta.url,
-                           file_segment = segment,
-                           "Bad file meta URL, segment didn't match regex");
-            return Ok(());
-        }
-
-        if segment == "." || segment == ".." {
-            tracing::warn!(file_meta.url,
-                           file_segment = segment,
-                           "Bad file meta URL, segment was '.' or '..'");
-            return Ok(());
-        }
-    }
+    validate_file_relative_url(&*file_meta.url)?;
 
     let url =
         format!("{mirror_url}{file_rel_url}",
@@ -474,4 +444,83 @@ pub async fn download_job_file(
                     "Moving downloaded file from temp directory to output directory");
 
     Ok(())
+}
+
+fn validate_file_relative_url(url: &str) -> Result<()> {
+    // Wrap everyting in a closure to add context with anyhow.
+    (|| -> Result<()> {
+        if url == "" {
+            return Err(anyhow::Error::msg("URL was the empty string"));
+        }
+
+        let mut rel_segments = url.split('/');
+        let first = rel_segments.next().expect("split always returns at least one segment");
+
+        if first.len() > 0 {
+            return Err(anyhow::Error::msg("Path missing initial '/'"));
+        }
+
+        // TODO: Use lazy_static!
+        let segment_re = Regex::new(r"^[-a-z_0-9A-Z.]+$").expect("parse regex");
+
+        for segment in rel_segments {
+            // Wrap segment validation in a closure to add context with anyhow.
+            (|| -> Result<()> {
+                if !segment_re.is_match(segment) {
+                    return Err(anyhow::Error::msg("Path segment didn't match regex"));
+                }
+
+                if segment == "." || segment == ".." {
+                    return Err(anyhow::Error::msg("Path segment was '.' or '..'"));
+                }
+
+                Ok(())
+            })().with_context(|| format!("Bad path segment \
+                                        segment='{segment}'"))?;
+        }
+
+        Ok(())
+    })().with_context(|| format!("Bad file metadata relative URL \
+                                file_url='{url}'"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_file_relative_url;
+
+    #[test]
+    fn test_validate_file_relative_url() {
+        let cases: &[(&str, Result<(), ()>)] = &[
+            ("/enwiki/20230301/enwiki-20230301-abstract17.xml.gz", Ok(())),
+            ("", Err(())),
+            ("/", Err(())),
+            ("a", Err(())),
+            ("a/", Err(())),
+            ("/a", Ok(())),
+            ("/abc123ABC.-_", Ok(())),
+            ("//", Err(())),
+            ("//a", Err(())),
+            ("/abc/123", Ok(())),
+            ("/abc/123/", Err(())),
+            ("/abc/123/..", Err(())),
+            ("/abc/123/.", Err(())),
+            ("/abc/../123", Err(())),
+            ("/abc/./123", Err(())),
+        ];
+
+        let mut failures: usize = 0;
+
+        for (input, expected) in cases.iter() {
+            let output = validate_file_relative_url(input);
+            println!(r#"case input="{input}" expected={expected:?} output={output:?}"#);
+            if expected.is_ok() != output.is_ok() {
+                println!("  Case failed!\n");
+                failures += 1;
+            } else {
+                println!("  Case OK!\n");
+            }
+        }
+
+         assert!(failures == 0);
+    }
 }

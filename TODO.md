@@ -1,10 +1,14 @@
 # To do
 
+
 ## Must do before publishing
 
+* Investigate SHA1 performance  
+  To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
+    * wmd: 74s  
+      `cargo run -- download --job abstractsdump`
+    * sha1sum: 2s
 * Refactor `operations::download_file()`, it's far too big.
-* Download files with a temporary extension, then move them into place when done.
-    * Re-use TempDir between file downloads (currently one per file).
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
 * Use `lazy_static!` for Regex initialisation.
@@ -125,14 +129,3 @@
 * Avoid boilerplate to record context variables in `download` subcommand.
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span
-* Unit tests for file relative URL validation
-
-## Done
-
-* Test existing file handling:
-    * [x] Not found
-    * [x] Not a file
-    * [x] Length OK, hash OK
-    * [x] Length OK, hash bad
-    * [x] Length OK, hash missing
-    * [x] Length wrong

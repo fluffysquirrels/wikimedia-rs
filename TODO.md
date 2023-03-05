@@ -4,7 +4,8 @@
 
 * Tidy up args to `operations::download_job_file`
 * Tidy up duplicated code between `download` and `get_jobs`
-* Download files with a temporary extension, then move them into place when done.
+* Improve downloads
+    * Download files with a temporary extension, then move them into place when done.
 * Use `lazy_static!` for Regex initialisation.
 * Subcommand to run from cron.
     * Summary at the end.
@@ -22,8 +23,35 @@
 
 ## Might do
 
+* Improve downloads
+    * Set download rate limit
+    * Retries
+    * Resume partial download
+    * Better performance: write while beginning next read
+    * Refactor to make it re-usable. Separate crate?
+    * Cancellation support
+    * Progress bar
+    * Configurable timeout
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
-* Cache metadata
+* Cache metadata downloads
+    * Save to `./out/cache`
+    * Discard old cached files, options:
+        * Using standard HTTP headers
+            * Save `ETag` and `Last-Modified` headers from response  
+              `https://dumps.wikimedia.org` sends these for `dumpstatus.json`.  
+              `https://mirror.accum.se/mirror/wikimedia.org/dumps` sends `Last-Modified`
+              for `dumpstatus.json`.
+                * Probably save in the same file as the response:
+                    * Use WARC: https://commoncrawl.org/the-data/get-started/#WARC-Format  
+                      There's a great-looking crate [`warc`](https://crates.io/crates/warc)
+                    * Custom, as a prefix
+                    * Or using another standard serialisation library, like JSON
+            * Send `If-Modified-Since` and `If-None-Match`, handle 304.
+        * Just cache for a configurable n seconds, keep if cache file
+          modified time is newer, delete and ignore if file modified
+          time is older.
+* Support logging both pretty format to stderr and JSON to a file
+    * Or find / write a pretty printer for the tracing-subscriber JSON stream
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
@@ -32,6 +60,13 @@
     * bzip2 is very slow (12MB/s on my laptop)
     * Decompressed data would be faster to use, but 4-5x the size, so
       require maybe 80GB of disk space
+    * Useful crates:
+        * [`bzip2`](https://crates.io/crates/bzip2): Rust bindings to `libbz2`
+            * Includes a single and a multi archive decoder.
+        * [`flate2`](https://crates.io/crates/flate2) by default is pure Rust,
+          supports deflate, zlib, gzip compression algorithms.
+        * [`xz2`](https://crates.io/crates/xz2): Rust bindings to `liblzma`.
+        * [`zstd`](https://crates.io/crates/zstd): Rust bindings to `zstd`.
     * The archives are stored in page ID order, but I'm more likely to want
       to fetch an article by page title.
     * Multistream wikipedia dumps work like this:
@@ -86,13 +121,6 @@
     * https://github.com/gnosygnu/xowa
     * Java
     * Last release 2021-01, downloadable files are old ~2016
-* Set download rate limit
-* More performant, elegant, featureful async streaming downloads.
-    * Progress bar
-    * Write while beginning next read.
-    * Configurable timeout
-    * Cancellation support
-    * Write it as a separate crate?
 * Avoid boilerplate to record context variables in `download` subcommand.
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span

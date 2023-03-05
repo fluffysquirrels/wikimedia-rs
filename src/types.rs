@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DumpVersionStatus {
     pub jobs: BTreeMap<String, JobStatus>,
 
@@ -9,7 +9,7 @@ pub struct DumpVersionStatus {
     pub version: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct JobStatus {
     pub status: String,
 
@@ -20,7 +20,7 @@ pub struct JobStatus {
     pub files: BTreeMap<String, FileMetadata>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileMetadata {
     pub size: u64,
     pub url: String,
@@ -28,6 +28,14 @@ pub struct FileMetadata {
 
     #[allow(dead_code)] // Not used currently
     pub md5: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JobOutput {
+    pub name: String,
+
+    #[serde(flatten)]
+    pub status: JobStatus,
 }
 
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]

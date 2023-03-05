@@ -1,13 +1,14 @@
 use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, JobNameArg},
+    http,
     operations,
     Result,
 };
 use std::path::PathBuf;
 use tracing::Level;
 
-/// Download latest dump job files from Wikimedia
+/// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
     #[clap(flatten)]
@@ -53,15 +54,7 @@ pub async fn main(args: Args) -> Result<()> {
     let dump_name = &*args.dump_name.value;
     let job_name = &*args.job_name.value;
 
-    let client = reqwest::ClientBuilder::new()
-        .user_agent(concat!(
-            env!("CARGO_PKG_NAME"),
-            "/",
-            env!("CARGO_PKG_VERSION"),
-            ))
-        // .gzip(true)
-        // .timeout(...)
-        .build()?;
+    let client = http::client()?;
 
     let mut vers = operations::get_dump_versions(&client, &args.dump_name).await?;
     if vers.is_empty() {

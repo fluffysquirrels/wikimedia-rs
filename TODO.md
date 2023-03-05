@@ -3,9 +3,12 @@
 ## Must do before publishing
 
 * Option to download only some files from a job
-* Subcommand to list jobs
 * Subcommand to list files for a job
+* Subcommand to list versions
+* Specify a version with `--version`, still pick the latest by default.
 * Tidy up args to `operations::download_job_file`
+* Tidy up duplicated code between `download` and `get_jobs`
+* Download files with a temporary extension, then move them into place when done.
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -16,7 +19,6 @@
        return a custom `Error` struct with an `kind: ErrorKind` field.
     *  Downloads fail. Retry automatically after a short delay or next
        time the cronjob runs.
-* Download files with a temporary extension, then move them into place when done.
 * Validate dump name, job name to have no relative paths, path traversal.
 * Subcommand / download mode to verify the hashes of downloaded files
 * Download mode that skips already downloaded files (perhaps verify size or SHA1)
@@ -24,7 +26,6 @@
 ## Might do
 
 * Subcommand to list dumps
-* Subcommand to list versions
 * Some kind of indexed lookup
     * bzip2 is very slow (12MB/s on my laptop)
     * Decompressed data would be faster to use, but 4-5x the size, so
@@ -90,7 +91,6 @@
     * Configurable timeout
     * Cancellation support
     * Write it as a separate crate?
-* Specify a version to `download` subcommand with `--version`, still pick the latest by default.
 * Avoid boilerplate to record context variables in `download` subcommand.
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span

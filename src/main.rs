@@ -1,5 +1,6 @@
 mod args;
 mod commands;
+mod http;
 mod operations;
 mod types;
 
@@ -17,7 +18,7 @@ struct Args {
     #[command(subcommand)]
     command: Command,
 
-    /// Set this flag to enable logging to stdout as JSON. Logs are in a a text format by default.
+    /// Set this flag to enable logging to stdout as JSON. Logs are in a text format by default.
     #[arg(long, default_value_t = false)]
     log_json: bool,
 }
@@ -25,6 +26,7 @@ struct Args {
 #[derive(clap::Subcommand, Clone, Debug)]
 enum Command {
     Download(commands::download::Args),
+    GetJobs(commands::get_jobs::Args),
 }
 
 #[tokio::main]
@@ -40,7 +42,8 @@ async fn main() -> Result<()> {
         .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
         .with_file(true)
         .with_line_number(true)
-        .with_target(true);
+        .with_target(true)
+        .with_writer(std::io::stderr);
 
     if args.log_json {
         sub_builder.json().init();
@@ -54,6 +57,7 @@ async fn main() -> Result<()> {
 
     match args.command {
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
+        Command::GetJobs(cmd_args) => commands::get_jobs::main(cmd_args).await?,
     };
 
     Ok(())

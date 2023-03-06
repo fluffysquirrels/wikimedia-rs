@@ -8,7 +8,6 @@
     * wmd: 74s  
       `cargo run -- download --job abstractsdump`
     * sha1sum: 2s
-* Refactor `operations::download_file()`, it's far too big.
 * Tidy up args to `operations::download_job_file`
 * Subcommand to run from cron.
     * Summary at the end.

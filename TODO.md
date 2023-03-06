@@ -10,7 +10,6 @@
     * sha1sum: 2s
 * Refactor `operations::download_file()`, it's far too big.
 * Tidy up args to `operations::download_job_file`
-* Tidy up duplicated code between `download` and `get_jobs`
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.

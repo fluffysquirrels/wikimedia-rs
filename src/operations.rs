@@ -291,7 +291,9 @@ pub async fn download_job_file(
 
     if finishing_len != file_meta.size {
         return Err(anyhow::Error::msg(format!(
-            "Download job file was the wrong size url={url} expected_len={expected} \
+            "Download job file was the wrong size \
+             url='{url}' \
+             expected_len={expected} \
              finishing_len={finishing_len}", expected = file_meta.size)))
     }
 
@@ -304,13 +306,13 @@ pub async fn download_job_file(
             let expected_sha1 = expected_sha1.to_lowercase();
             if sha1_hash_hex != expected_sha1 {
                 return Err(anyhow::Error::msg(
-                    format!("Bad SHA1 hash for downloaded job file url={url} \
+                    format!("Bad SHA1 hash for downloaded job file url='{url}' \
                              expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
                             computed_sha1 = sha1_hash_hex)));
             }
 
             tracing::debug!(sha1 = expected_sha1,
-                            "Downloaded file SHA1 hash matched the expected value");
+                            "Downloaded file OK: SHA1 hash matched the expected value");
         }
     }
 
@@ -318,13 +320,14 @@ pub async fn download_job_file(
         .await
         .with_context(|| format!("While moving a downloaded file from its temporary download \
                                   directory to its target directory \
-                                  temp_path={temp_file_path} target_path={file_out_path}",
+                                  temp_path='{temp_file_path}' \
+                                  target_path='{file_out_path}'",
                                  temp_file_path = temp_file_path.display(),
                                  file_out_path = file_out_path.display()))?;
 
     tracing::debug!(temp_file_path = %temp_file_path.display(),
                     file_out_path = %file_out_path.display(),
-                    "Moving downloaded file from temp directory to output directory");
+                    "Moved downloaded file from temp directory to output directory");
 
     Ok(())
 }

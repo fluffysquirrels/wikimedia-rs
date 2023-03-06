@@ -2,7 +2,6 @@ use crate::{
     types::{Version, VersionSpec},
     UserRegex,
 };
-use regex::{Regex};
 use std::str::FromStr;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -35,14 +34,13 @@ impl FromStr for VersionSpec {
             return Ok(VersionSpec::Latest);
         }
 
-        // TODO: Use lazy_static!
-        let version_re = Regex::new(r"^\d{8}$").expect("compile regex");
-
-        if version_re.is_match(s) {
+        if lazy_regex!(r"^\d{8}$").is_match(s) {
             Ok(VersionSpec::Version(Version(s.to_string())))
         } else {
-            Err(clap::error::Error::raw(clap::error::ErrorKind::ValueValidation,
-                                        r#"The value must be 8 numerical digits (e.g. "20230301") or the string "latest"."#))
+            Err(clap::error::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "The value must be 8 numerical digits (e.g. \"20230301\") \
+                 or the string \"latest\"."))
         }
     }
 }

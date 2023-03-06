@@ -1,10 +1,14 @@
+// This module is first to import its macro.
+#[macro_use]
+mod lazy_regex;
+
 mod args;
 mod commands;
 mod http;
-mod user_regex;
 mod operations;
 mod temp_dir;
 mod types;
+mod user_regex;
 
 use clap::Parser;
 use crate::{

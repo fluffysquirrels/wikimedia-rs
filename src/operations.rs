@@ -8,7 +8,6 @@ use crate::{
     types::{DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
     UserRegex,
 };
-use regex::Regex;
 use sha1::{Sha1, Digest};
 use std::{
     path::Path,
@@ -56,18 +55,15 @@ pub async fn get_dump_versions(
 
     let mut vers = Vec::<Version>::new();
 
-    // TODO: Use lazy_static!
-    let date_href_re = Regex::new(r"^(?P<date>\d{8})/$").expect("parse regex");
-
     for link in doc.select(&scraper::Selector::parse("a").expect("parse selector")) {
         let href = link.value().attr("href");
-        tracing::trace!(href = href, "dump versions link");
+        tracing::trace!(href, "dump versions link");
 
         let Some(href) = href else {
             continue;
         };
 
-        let Some(cap) = date_href_re.captures(href) else {
+        let Some(cap) = lazy_regex!(r"^(?P<date>\d{8})/$").captures(href) else {
             continue;
         };
 
@@ -460,13 +456,10 @@ fn validate_file_relative_url(url: &str) -> Result<()> {
             return Err(anyhow::Error::msg("Path missing initial '/'"));
         }
 
-        // TODO: Use lazy_static!
-        let segment_re = Regex::new(r"^[-a-z_0-9A-Z.]+$").expect("parse regex");
-
         for segment in rel_segments {
             // Wrap segment validation in a closure to add context with anyhow.
             (|| -> Result<()> {
-                if !segment_re.is_match(segment) {
+                if !lazy_regex!(r"^[-a-z_0-9A-Z.]+$").is_match(segment) {
                     return Err(anyhow::Error::msg("Path segment didn't match regex"));
                 }
 

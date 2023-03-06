@@ -2043,6 +2043,7 @@ dependencies = [
  "chrono",
  "clap",
  "hex",
+ "once_cell",
  "rand 0.8.5",
  "regex",
  "reqwest",

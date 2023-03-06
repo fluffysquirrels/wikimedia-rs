@@ -17,13 +17,22 @@ use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 use tracing::Level;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ExistingFileStatus {
     NoFile,
     DeletedBecauseIncorrectSize,
     DeletedBecauseIncorrectSha1Hash,
     NoSha1HashToCheck,
     FileOk,
+}
+
+#[derive(Clone, Debug)]
+struct DownloadFileResult {
+    /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
+    sha1: String,
+
+    /// Downloaded file size.
+    len: u64,
 }
 
 #[tracing::instrument(level = "trace", skip(client))]
@@ -242,9 +251,8 @@ pub async fn download_job_file(
     std::fs::create_dir_all(&*file_out_dir_path)?;
 
     let download_request = client.get(url.clone())
-                                 .build();
+                                 .build()?;
     let download_result = download_file(&client, download_request, &*temp_file_path).await?;
-    asdf();
 
     if download_result.len != file_meta.size {
         return Err(anyhow::Error::msg(format!(
@@ -460,14 +468,6 @@ async fn calculate_file_sha1(
                                        path = path.display()))
 }
 
-struct DownloadFileResult {
-    /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
-    sha1: String,
-
-    /// Downloaded file size.
-    len: u64,
-}
-
 #[tracing::instrument(level = "trace", skip(client), ret)]
 async fn download_file(
     client: &reqwest::Client,
@@ -475,7 +475,7 @@ async fn download_file(
     file_path: &Path,
 ) -> Result<DownloadFileResult> {
 
-    let url = request.url();
+    let url = request.url().clone();
 
     let mut file = tokio::fs::OpenOptions::new()
         .create_new(true)
@@ -487,7 +487,7 @@ async fn download_file(
     let download_res_code = download_res.status();
     let download_res_code_int = download_res_code.as_u16();
     let download_res_code_str = download_res_code.canonical_reason().unwrap_or("");
-    tracing::debug!(url = url.clone(),
+    tracing::debug!(url = %url.clone(),
                    response_code = download_res_code_int,
                    response_code_str = download_res_code_str,
                    "download_file HTTP status");

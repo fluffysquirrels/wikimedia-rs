@@ -1,3 +1,5 @@
+#![feature(async_closure)]
+
 // This module is first to import its macro.
 #[macro_use]
 mod lazy_regex;

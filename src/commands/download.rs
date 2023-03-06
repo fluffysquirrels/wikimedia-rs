@@ -76,8 +76,8 @@ pub async fn main(args: Args) -> Result<()> {
                                       &*args.mirror_url, file_meta, &*args.out_dir,
                                       &temp_dir).await
             .with_context(|| format!(
-                "while downloading job file dump={dump_name} version={ver} job={job_name} \
-                 file={file_rel_url}",
+                "while downloading job file dump='{dump_name}' version='{ver}' job='{job_name}' \
+                 file='{file_rel_url}'",
                 ver = ver.0,
                 file_rel_url = &*file_meta.url))?;
     }

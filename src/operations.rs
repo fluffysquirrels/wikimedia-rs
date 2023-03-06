@@ -17,6 +17,15 @@ use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 use tracing::Level;
 
+#[derive(Debug)]
+pub enum ExistingFileStatus {
+    NoFile,
+    DeletedBecauseIncorrectSize,
+    DeletedBecauseIncorrectSha1Hash,
+    NoSha1HashToCheck,
+    FileOk,
+}
+
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dump_versions(
     client: &reqwest::Client,
@@ -214,132 +223,10 @@ pub async fn download_job_file(
                                              ver = ver.0,
                                              job_name = &*job_name.value));
 
-    // Look for an existing file at the output path.
-    let existing_meta = file_out_path.metadata();
-    match existing_meta {
-        // File not found error, go ahead and download to the output path.
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (),
-
-        // Report other errors.
-        Err(e) => {
-            return Err(anyhow::Error::new(e).context(format!(
-                "while checking for an existing file at the output path \
-                 file_out_path={file_out_path} \
-                 file_url={url}",
-                file_out_path = file_out_path.display())));
-        },
-
-        // Check existing file's metdata
-        Ok(existing_meta) => {
-            if !existing_meta.is_file() {
-                return Err(anyhow::Error::msg(format!(
-                    "While checking for an existing file at the output path, \
-                     found an item that's not a file. \
-                     file_out_path={file_out_path} \
-                     metadata={existing_meta:?} \
-                     file_url={url}",
-                    file_out_path = file_out_path.display())));
-            }
-
-            // Check existing file length
-            let expected_len = file_meta.size;
-            let existing_len = existing_meta.len();
-            if expected_len == existing_len {
-                // Check existing file SHA1 hash
-                match file_meta.sha1.as_ref() {
-                    // No SHA1 hash in metadata, warn and return OK assuming the download
-                    // succeeded.
-                    None => {
-                        tracing::warn!(file_len = expected_len,
-                                       file_path = %file_out_path.display(),
-                                       url,
-                                       "Existing file is the right size, but there's no SHA1 \
-                                        hash to check in the dump status file metadata.");
-                        return Ok(())
-                    },
-
-                    // SHA1 hash in metadata, check it matches the existing file's hash.
-                    Some(expected_sha1) => {
-                        let expected_sha1 = expected_sha1.to_lowercase();
-
-                        // Calculate SHA1 hash for existing file.
-                        let existing_file =
-                            tokio::fs::File::open(&*file_out_path)
-                                .await
-                                .with_context(
-                                    || format!("while opening an existing output file to check \
-                                                its SHA1 hash \
-                                                existing_file_path={file_out_path} \
-                                                url={url} \
-                                                expected_sha1={expected_sha1}",
-                                               file_out_path = file_out_path.display(),
-                                               ))?;
-                        let mut sha1_hasher = Sha1::new();
-                        let mut bytes_stream = tokio_util::io::ReaderStream::new(existing_file);
-                        while let Some(chunk) = bytes_stream.next().await {
-                            let chunk = chunk
-                                .with_context(|| format!(
-                                    "while reading a chunk of an existing output file to check \
-                                     its SHA1 hash \
-                                     existing_file_path={file_out_path} \
-                                     file_url={url}",
-                                    file_out_path = file_out_path.display()))?;
-                            tracing::trace!(chunk_len = chunk.len(),
-                                            "read existing file chunk to calculate SHA1 hash");
-                            sha1_hasher.update(&chunk);
-                        }
-                        let existing_sha1 = sha1_hasher.finalize();
-                        let existing_sha1_string = hex::encode(existing_sha1);
-
-                        if expected_sha1 == existing_sha1_string {
-                            // Existing file's SHA1 hash was correct, return Ok.
-                            tracing::debug!(file_len = expected_len,
-                                            file_path = %file_out_path.display(),
-                                            sha1 = expected_sha1,
-                                            url,
-                                            "Existing file OK: SHA1 hash and file size are \
-                                             correct.");
-                            return Ok(());
-                        } else {
-                            // Existing file's SHA1 hash was incorrect, delete it.
-                            tracing::warn!(file_len = expected_len,
-                                           file_path = %file_out_path.display(),
-                                           existing_sha1 = existing_sha1_string,
-                                           expected_sha1,
-                                           url,
-                                           "Existing file bad: file size correct but SHA1 hash \
-                                            was wrong. Deleting existing file.");
-                            std::fs::remove_file(&*file_out_path)
-                                .with_context(
-                                    || format!("while deleting existing file that had the wrong \
-                                                SHA1 hash \
-                                                file_out_path={file_out_path} \
-                                                existing_len={existing_len} \
-                                                existing_sha1={existing_sha1_string}
-                                                expected_sha1={expected_sha1} \
-                                                file_url={url}",
-                                               file_out_path = file_out_path.display()))?;
-                        }
-                    }, // check SHA1
-                } // match on whether we have a SHA1 in the file metadata.
-            } else {
-                // Existing file size does not match expected.
-                tracing::warn!(file_out_path = %file_out_path.display(),
-                               existing_len,
-                               expected_len,
-                               "Deleting existing file that was the wrong size");
-
-                std::fs::remove_file(&*file_out_path)
-                    .with_context(
-                        || format!("while deleting existing file that was the wrong size \
-                                    file_out_path={file_out_path} \
-                                    existing_len={existing_len} \
-                                    expected_len={expected_len} \
-                                    file_url={url}",
-                                   file_out_path = file_out_path.display()))?;
-            }
-        } // Check existing file's metadata
-    }; // match on result of retrieving existing file's metadata.
+    match check_existing_file(&*file_out_path, file_meta, &*url).await? {
+        ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck => return Ok(()),
+        _ => (),
+    };
 
     let file_out_dir_path = file_out_path.parent().expect("file_out_path.parent() not None");
 
@@ -475,6 +362,143 @@ fn validate_file_relative_url(url: &str) -> Result<()> {
         Ok(())
     })().with_context(|| format!("Bad file metadata relative URL \
                                 file_url='{url}'"))
+}
+
+#[tracing::instrument(level = "trace", ret)]
+async fn check_existing_file(
+    path: &Path,
+    file_meta: &FileMetadata,
+    url: &str,
+) -> Result<ExistingFileStatus> {
+    // Wrapped in a closure to add context on errors.
+    (async || -> Result<ExistingFileStatus> {
+
+        // Look for an existing file at the output path.
+        let existing_meta = match path.metadata() {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // File not found error, go ahead and download to the output path.
+                return Ok(ExistingFileStatus::NoFile);
+            },
+
+            // Report other errors.
+            Err(e) => {
+                return Err(anyhow::Error::new(e).context(format!(
+                    "while checking for an existing file at the output path \
+                     file_out_path='{path}' \
+                     file_url='{url}'",
+                    path = path.display())));
+            }
+
+            Ok(meta) => meta,
+        };
+
+        // Check existing file's metdata
+        if !existing_meta.is_file() {
+            return Err(anyhow::Error::msg(format!(
+                 "Found an item that's not a file. \
+                  metadata.file_type()={file_type:?}",
+                file_type = existing_meta.file_type())));
+        }
+
+        // Check existing file length
+        let expected_len = file_meta.size;
+        let existing_len = existing_meta.len();
+        if expected_len != existing_len {
+            // Existing file length does not match expected.
+            tracing::warn!(path = %path.display(),
+                           existing_len,
+                           expected_len,
+                           url,
+                           "Deleting existing file that was the wrong size");
+
+            std::fs::remove_file(&*path)
+                .with_context(
+                    || format!("while deleting existing file that was the wrong size \
+                                existing_len={existing_len} \
+                                expected_len={expected_len}"))?;
+
+            return Ok(ExistingFileStatus::DeletedBecauseIncorrectSize);
+        }
+
+        // Check existing file SHA1 hash
+        let expected_sha1 = match file_meta.sha1.as_ref() {
+            // No SHA1 hash in metadata, warn and return OK assuming the download
+            // succeeded.
+            None => {
+                tracing::warn!(file_path = %path.display(),
+                               ?file_meta,
+                               url,
+                               "Existing file is the right size, but there's no SHA1 \
+                                hash to check in the dump status file metadata.");
+                return Ok(ExistingFileStatus::NoSha1HashToCheck);
+            },
+
+            Some(sha1) => sha1,
+        };
+
+        // SHA1 hash in metadata, check it matches the existing file's hash.
+        let expected_sha1 = expected_sha1.to_lowercase();
+
+        let existing_sha1 = calculate_file_sha1(&*path).await?;
+
+        if expected_sha1 == existing_sha1 {
+            // Existing file's SHA1 hash was correct, return Ok.
+            tracing::debug!(file_len = expected_len,
+                            file_path = %path.display(),
+                            sha1 = expected_sha1,
+                            url,
+                            "Existing file OK: SHA1 hash and file size are \
+                             correct.");
+            return Ok(ExistingFileStatus::FileOk);
+        } else {
+            // Existing file's SHA1 hash was incorrect, delete it.
+            tracing::warn!(file_len = expected_len,
+                           file_path = %path.display(),
+                           existing_sha1,
+                           expected_sha1,
+                           url,
+                           "Existing file bad: file size correct but SHA1 hash \
+                            was wrong. Deleting existing file.");
+            std::fs::remove_file(&*path)
+                .with_context(
+                    || format!("while deleting existing file that had the correct size \
+                                but wrong SHA1 hash \
+                                existing_sha1={existing_sha1} \
+                                expected_sha1={expected_sha1}"))?;
+            return Ok(ExistingFileStatus::DeletedBecauseIncorrectSha1Hash);
+        }
+
+        // Not reached.
+    })().await.with_context(|| format!(
+        "Checking existing file at target path \
+         path='{path}' \
+         file_metadata={file_meta:?} \
+         download_url='{url}'",
+        path = path.display()))
+}
+
+// Calculate SHA1 hash for data in a file, formatted as a lower-case hex string.
+async fn calculate_file_sha1(
+    path: &Path,
+) -> Result<String> {
+    (async || -> Result<String> {
+        let file = tokio::fs::File::open(&*path)
+                       .await
+                       .with_context(|| "while opening the file")?;
+        let mut sha1_hasher = Sha1::new();
+        let mut bytes_stream = tokio_util::io::ReaderStream::new(file);
+
+        while let Some(chunk) = bytes_stream.next().await {
+            let chunk = chunk.with_context(|| "while reading a chunk of bytes from the file")?;
+            sha1_hasher.update(&chunk);
+        }
+
+        let sha1_bytes = sha1_hasher.finalize();
+        let sha1_string = hex::encode(sha1_bytes);
+        Ok(sha1_string)
+    })().await.with_context(|| format!("while calculating the SHA1 hash for a file \
+                                        path={path}",
+                                       path = path.display()))
 }
 
 #[cfg(test)]

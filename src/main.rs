@@ -37,6 +37,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Clone, Debug)]
 enum Command {
+    Completion(commands::completion::Args),
     Download(commands::download::Args),
     GetFileInfo(commands::get_file_info::Args),
     GetJob(commands::get_job::Args),
@@ -70,6 +71,7 @@ async fn main() -> Result<()> {
     }
 
     match args.command {
+        Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
         Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,

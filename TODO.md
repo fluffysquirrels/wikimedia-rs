@@ -23,6 +23,7 @@
 
 ## Might do
 
+* Document shell completion script setup.
 * Add brief syntax hints for `--file-name-regex`.
 * Improve downloads
     * Set download rate limit

@@ -3,9 +3,10 @@
 use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
+    http,
     Result,
     TempDir,
-    types::{DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
+    types::{Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
     UserRegex,
 };
 use sha1::{Sha1, Digest};
@@ -13,7 +14,6 @@ use std::{
     path::Path,
     time::Duration,
 };
-use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 use tracing::Level;
 
@@ -26,13 +26,51 @@ pub enum ExistingFileStatus {
     FileOk,
 }
 
-#[derive(Clone, Debug)]
-struct DownloadFileResult {
-    /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
-    sha1: String,
+#[tracing::instrument(level = "trace", skip(client))]
+pub async fn get_dumps(
+    client: &reqwest::Client
+) -> Result<Vec<Dump>> {
+    let url = "https://dumps.wikimedia.org//backup-index-bydb.html";
+    let req = client.get(url)
+                    .timeout(Duration::from_secs(10))
+                    .build()?;
 
-    /// Downloaded file size.
-    len: u64,
+    let fetch_res = http::fetch_text(&client, req).await?;
+
+    let doc = scraper::Html::parse_document(&*fetch_res.response_body);
+    if !doc.errors.is_empty() {
+        tracing::warn!(errors = ?doc.errors,
+                       "get_dumps index had HTML parse errors");
+    }
+
+    let mut dumps = Vec::<Dump>::new();
+
+    for link in doc.select(&scraper::Selector::parse("a").expect("parse selector")) {
+        let href = link.value().attr("href");
+        tracing::trace!(href, "dumps index link");
+
+        let Some(href) = href else {
+            continue;
+        };
+
+        let Some(cap) = lazy_regex!(r"^(?P<dump>[-_a-zA-Z0-9]+)/(?P<date>\d{8})$")
+                                   .captures(href) else {
+            continue;
+        };
+
+        let dump_string = cap.name("dump").expect("regex capture name").as_str().to_string();
+        dumps.push(Dump(dump_string));
+    }
+
+    tracing::debug!(dumps_count = dumps.len(),
+                    "dumps ret count");
+
+    if tracing::enabled!(Level::TRACE) {
+        tracing::trace!(dumps = ?dumps,
+                       "dumps ret data");
+    }
+
+    Ok(dumps)
 }
 
 #[tracing::instrument(level = "trace", skip(client))]
@@ -252,7 +290,7 @@ pub async fn download_job_file(
 
     let download_request = client.get(url.clone())
                                  .build()?;
-    let download_result = download_file(&client, download_request, &*temp_file_path).await?;
+    let download_result = http::download_file(&client, download_request, &*temp_file_path).await?;
 
     if download_result.len != file_meta.size {
         return Err(anyhow::Error::msg(format!(
@@ -466,69 +504,6 @@ async fn calculate_file_sha1(
     })().await.with_context(|| format!("while calculating the SHA1 hash for a file \
                                         path={path}",
                                        path = path.display()))
-}
-
-#[tracing::instrument(level = "trace", skip(client), ret)]
-async fn download_file(
-    client: &reqwest::Client,
-    request: reqwest::Request,
-    file_path: &Path,
-) -> Result<DownloadFileResult> {
-
-    let url = request.url().clone();
-
-    let mut file = tokio::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&*file_path)
-        .await?;
-
-    let download_res = client.execute(request).await?;
-    let download_res_code = download_res.status();
-    let download_res_code_int = download_res_code.as_u16();
-    let download_res_code_str = download_res_code.canonical_reason().unwrap_or("");
-    tracing::debug!(url = %url.clone(),
-                   response_code = download_res_code_int,
-                   response_code_str = download_res_code_str,
-                   "download_file HTTP status");
-
-    if !download_res_code.is_success() {
-        return Err(anyhow::Error::msg(
-            format!("HTTP response error downloading file url='{url}' \
-                     response_code={download_res_code_int} \
-                     response_code_str='{download_res_code_str}'")));
-    }
-
-    let mut bytes_stream = download_res.bytes_stream();
-    let mut sha1_hasher = Sha1::new();
-
-    while let Some(chunk) = bytes_stream.next().await {
-        let chunk = chunk
-            .with_context(|| format!("while downloading a file url='{url}'"))?;
-        sha1_hasher.update(&chunk);
-        tokio::io::copy(&mut chunk.as_ref(), &mut file)
-            .await
-            .with_context(|| format!("while writing a downloaded chunk to disk \
-                                      url={url} file_path={file_path}",
-                                     file_path = file_path.display()))?;
-    }
-
-    file.flush().await?;
-    file.sync_all().await?;
-
-    let file_len = file.metadata().await?.len();
-
-    drop(file);
-
-    tracing::debug!("download_file download complete");
-
-    let sha1_hash = sha1_hasher.finalize();
-    let sha1_hash_string = hex::encode(sha1_hash);
-
-    Ok(DownloadFileResult {
-        sha1: sha1_hash_string,
-        len: file_len,
-    })
 }
 
 #[cfg(test)]

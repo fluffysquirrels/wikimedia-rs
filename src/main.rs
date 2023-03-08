@@ -39,6 +39,7 @@ struct Args {
 enum Command {
     Completion(commands::completion::Args),
     Download(commands::download::Args),
+    GetDump(commands::get_dump::Args),
     GetFileInfo(commands::get_file_info::Args),
     GetJob(commands::get_job::Args),
     GetVersion(commands::get_version::Args),
@@ -73,6 +74,7 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
+        Command::GetDump(cmd_args) => commands::get_dump::main(cmd_args).await?,
         Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,

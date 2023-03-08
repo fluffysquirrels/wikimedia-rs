@@ -3,6 +3,7 @@
 
 ## Must do before publishing
 
+* Finish refactoring operations to use `http::fetch_text`
 * Investigate SHA1 performance  
   To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
     * wmd: 74s  
@@ -23,6 +24,8 @@
 
 ## Might do
 
+* Tidy up logging with some more spans / more instrument use
+    * E.g. repetition in http module.
 * Document shell completion script setup.
 * Add brief syntax hints for `--file-name-regex`.
 * Improve downloads
@@ -36,7 +39,6 @@
         * Crate [`indicatif`](https://crates.io/crates/indicatif) looks good.
     * Configurable timeout
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
-* Subcommand to list dumps
 * Cache metadata downloads
     * Save to `./out/cache`
     * Discard old cached files, options:

@@ -55,6 +55,9 @@ pub struct FileInfoOutput {
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct Dump(pub String);
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Version(pub String);
 
 #[derive(Clone, Debug)]

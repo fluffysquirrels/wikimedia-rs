@@ -3,7 +3,6 @@
 
 ## Must do before publishing
 
-* Finish refactoring operations to use `http::fetch_text`
 * Investigate SHA1 performance  
   To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
     * wmd: 74s  
@@ -24,7 +23,7 @@
 
 ## Might do
 
-* Tidy up logging with some more spans / more instrument use
+* Tidy up logging and error handling with some more spans / instrument use / closures
     * E.g. repetition in http module.
 * Document shell completion script setup.
 * Add brief syntax hints for `--file-name-regex`.

@@ -79,31 +79,13 @@ pub async fn get_dump_versions(
     dump_name: &DumpNameArg
 ) -> Result<Vec<Version>> {
     let url = format!("https://dumps.wikimedia.org/{dump_name}/", dump_name = dump_name.value);
-    let res = client.get(url.clone())
+    let req = client.get(url.clone())
                     .timeout(Duration::from_secs(10))
-                    .send()
-                    .await?;
-    let res_code = res.status();
-    let res_code_int = res_code.as_u16();
-    let res_code_str = res_code.canonical_reason().unwrap_or("");
-    tracing::info!(url = url.clone(),
-                   response_code = res_code_int,
-                   response_code_str = res_code_str,
-                   "GET dump versions");
+                    .build()?;
 
-    let res_text = res.text().await?;
-    if tracing::enabled!(Level::TRACE) {
-        tracing::trace!(body_text = res_text.clone(),
-                       "GET dump versions body");
-    }
+    let fetch_res = http::fetch_text(&client, req).await?;
 
-    if !res_code.is_success() {
-        return Err(anyhow::Error::msg(
-            format!("HTTP response error fetching dump versions url={url} \
-                     response_code={res_code_int} response_code_str={res_code_str}")));
-    }
-
-    let doc = scraper::Html::parse_document(&*res_text);
+    let doc = scraper::Html::parse_document(&*fetch_res.response_body);
     if !doc.errors.is_empty() {
         tracing::warn!(errors = ?doc.errors,
                        "dump versions body had HTML parse errors");
@@ -165,31 +147,13 @@ pub async fn get_dump_version_status(
     let url = format!("https://dumps.wikimedia.org/{dump_name}/{ver}/dumpstatus.json",
                       dump_name = dump_name.value,
                       ver = ver.0);
-    let res = client.get(url.clone())
+    let req = client.get(url.clone())
                     .timeout(Duration::from_secs(10))
-                    .send()
-                    .await?;
-    let res_code = res.status();
-    let res_code_int = res_code.as_u16();
-    let res_code_str = res_code.canonical_reason().unwrap_or("");
-    tracing::info!(url = url.clone(),
-                   response_code = res_code_int,
-                   response_code_str = res_code_str,
-                   "GET dump version status");
+                    .build()?;
 
-    let res_text = res.text().await?;
-    if tracing::enabled!(Level::TRACE) {
-        tracing::trace!(body_text = res_text.clone(),
-                       "GET dump version status body");
-    }
+    let fetch_res = http::fetch_text(&client, req).await?;
 
-    if !res_code.is_success() {
-        return Err(anyhow::Error::msg(
-            format!("HTTP response error fetching dump version status url={url} \
-                     response_code={res_code_int} response_code_str={res_code_str}")));
-    }
-
-    let status: DumpVersionStatus = serde_json::from_str(&*res_text)
+    let status: DumpVersionStatus = serde_json::from_str(&*fetch_res.response_body)
         .with_context(|| format!("Getting dump version status url={url}"))?;
 
     Ok((ver.clone(), status))

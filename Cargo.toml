@@ -21,7 +21,8 @@ tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "rt-
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["io"] }
 tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json"] }
+tracing-bunyan-formatter = "0.3.6"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json", "time"] }
 
 [profile.release]
 # strip = true

@@ -3,6 +3,7 @@
 
 ## Must do before publishing
 
+* Rename command to `wmd`, possibly crate too.
 * Investigate SHA1 performance  
   To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
     * wmd: 74s  
@@ -12,17 +13,30 @@
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
-* Handle it gracefully in the cronjob when:
-    *  The status of the job is not "done" (e.g. still in
-       progress). At the moment the `download` subcommand just returns
-       an Err() with a message, which isn't machine readable. Probably
-       return a custom `Error` struct with an `kind: ErrorKind` field.
-    *  Downloads fail. Retry automatically after a short delay or next
-       time the cronjob runs.
+    * Log to disk
+    * Delete old dump versions when newer ones are complete
+        * How to tell when new ones are complete?
+          Check names and file sizes, optionally hashes too.
+    * Handle it gracefully when:
+        *  The status of the job is not "done" (e.g. still in
+           progress). At the moment the `download` subcommand just returns
+           an Err() with a message, which isn't machine readable. Probably
+           return a custom `Error` struct with an `kind: ErrorKind` field.
+        *  Downloads fail. Retry automatically after a short delay or next
+           time the cronjob runs.
 * Validate dump name, job name to have no relative paths, path traversal.
 
 ## Might do
 
+* More unit testing
+* Logging to JSON
+    * Possibly: Support logging both pretty format to stderr and JSON to a file
+    * Document `bunyan` support.
+    * Or find / write a pretty printer for the tracing-subscriber JSON stream
+        * [bunyan-view in Rust](https://github.com/dekobon/bunyan-view)
+        * https://crates.io/crates/tracing-bunyan-formatter
+    * `thread_name` `thread_id`.
+    * `function_name!` macro: <https://docs.rs/function_name/latest/function_name/>
 * Tidy up logging and error handling with some more spans / instrument use / closures
     * E.g. repetition in http module.
 * Document shell completion script setup.
@@ -55,8 +69,6 @@
         * Just cache for a configurable n seconds, keep if cache file
           modified time is newer, delete and ignore if file modified
           time is older.
-* Support logging both pretty format to stderr and JSON to a file
-    * Or find / write a pretty printer for the tracing-subscriber JSON stream
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation

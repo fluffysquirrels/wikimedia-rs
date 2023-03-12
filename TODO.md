@@ -59,32 +59,6 @@
     * Configurable timeout
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
 * https://crates.io/crates/reqwest-tracing
-* Cache metadata downloads
-    * Save to `./out/cache`
-    * Existing libraries
-        * Archived: https://docs.rs/reqwest-middleware-cache/latest/reqwest_middleware_cache/
-        * New hotness: https://github.com/06chaynes/http-cache
-            * No body streaming
-            * serialises responses with bincode
-        * This crate implements HTTP caching rules in Rust:  
-          https://crates.io/crates/http-cache-semantics
-            * I found the complete implementations by looking at its
-              reverse dependencies on crates.io.
-    * Discard old cached files, options:
-        * Using standard HTTP headers
-            * Save `ETag` and `Last-Modified` headers from response  
-              `https://dumps.wikimedia.org` sends these for `dumpstatus.json`.  
-              `https://mirror.accum.se/mirror/wikimedia.org/dumps` sends `Last-Modified`
-              for `dumpstatus.json`.
-                * Probably save in the same file as the response:
-                    * Use WARC: https://commoncrawl.org/the-data/get-started/#WARC-Format  
-                      There's a great-looking crate [`warc`](https://crates.io/crates/warc)
-                    * Custom, as a prefix
-                    * Or using another standard serialisation library, like JSON
-            * Send `If-Modified-Since` and `If-None-Match`, handle 304.
-        * Just cache for a configurable n seconds, keep if cache file
-          modified time is newer, delete and ignore if file modified
-          time is older.
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
@@ -156,3 +130,33 @@
 * Avoid boilerplate to record context variables in `download` subcommand.
     * Perhaps use `tracing::span` to record context variables, with
       events setting their parent to that span
+
+## Notes
+
+* Cache metadata downloads
+    * Save to `./out/cache`
+    * Existing libraries
+        * Archived: https://docs.rs/reqwest-middleware-cache/latest/reqwest_middleware_cache/
+        * New hotness: https://github.com/06chaynes/http-cache
+            * No body streaming
+            * Serialises responses with bincode, don't think it's backwards compatible
+            * Still fine for small metadata
+        * This crate implements HTTP caching rules in Rust:  
+          https://crates.io/crates/http-cache-semantics
+            * I found the complete implementations by looking at its
+              reverse dependencies on crates.io.
+    * Discard old cached files, options:
+        * Using standard HTTP headers
+            * Save `ETag` and `Last-Modified` headers from response  
+              `https://dumps.wikimedia.org` sends these for `dumpstatus.json`.  
+              `https://mirror.accum.se/mirror/wikimedia.org/dumps` sends `Last-Modified`
+              for `dumpstatus.json`.
+                * Probably save in the same file as the response:
+                    * Use WARC: https://commoncrawl.org/the-data/get-started/#WARC-Format  
+                      There's a great-looking crate [`warc`](https://crates.io/crates/warc)
+                    * Custom, as a prefix
+                    * Or using another standard serialisation library, like JSON
+            * Send `If-Modified-Since` and `If-None-Match`, handle 304.
+        * Just cache for a configurable n seconds, keep if cache file
+          modified time is newer, delete and ignore if file modified
+          time is older.

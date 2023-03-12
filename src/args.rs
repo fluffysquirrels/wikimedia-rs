@@ -39,31 +39,6 @@ pub struct VersionSpecArg {
     pub value: VersionSpec,
 }
 
-impl CommonArgs {
-    pub fn http_cache_path(&self) -> PathBuf {
-        self.out_dir.join("_http_cache")
-    }
-}
-
-impl FromStr for VersionSpec {
-    type Err = clap::Error;
-
-    fn from_str(s: &str) -> std::result::Result<VersionSpec, clap::Error> {
-        if s == "latest" {
-            return Ok(VersionSpec::Latest);
-        }
-
-        if lazy_regex!(r"^\d{8}$").is_match(s) {
-            Ok(VersionSpec::Version(Version(s.to_string())))
-        } else {
-            Err(clap::error::Error::raw(
-                clap::error::ErrorKind::ValueValidation,
-                "The value must be 8 numerical digits (e.g. \"20230301\") \
-                 or the string \"latest\"."))
-        }
-    }
-}
-
 #[derive(clap::Args, Clone, Debug)]
 pub struct JobNameArg {
     /// The name of the job to use, e.g. `metacurrentdumprecombine`.
@@ -88,4 +63,29 @@ pub struct JsonOutputArg {
     /// Print results to stdout as JSON. By default the data will be printed as text.
     #[arg(id = "json", long = "json", default_value_t = false)]
     pub value: bool,
+}
+
+impl CommonArgs {
+    pub fn http_cache_path(&self) -> PathBuf {
+        self.out_dir.join("_http_cache")
+    }
+}
+
+impl FromStr for VersionSpec {
+    type Err = clap::Error;
+
+    fn from_str(s: &str) -> std::result::Result<VersionSpec, clap::Error> {
+        if s == "latest" {
+            return Ok(VersionSpec::Latest);
+        }
+
+        if lazy_regex!(r"^\d{8}$").is_match(s) {
+            Ok(VersionSpec::Version(Version(s.to_string())))
+        } else {
+            Err(clap::error::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "The value must be 8 numerical digits (e.g. \"20230301\") \
+                 or the string \"latest\"."))
+        }
+    }
 }

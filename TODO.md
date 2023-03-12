@@ -5,6 +5,8 @@
 
 * Cache metadata downloads
     * Log cache hits and misses, implement CacheManager.
+    * Add argument `--http-cache-mode` to disable caching, taking a value that is parsed into a  
+      [`http_cache_reqwest::CacheMode`](https://docs.rs/http-cache-reqwest/latest/http_cache_reqwest/enum.CacheMode.html)
 * Investigate SHA1 performance  
   To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
     * wmd: 74s  

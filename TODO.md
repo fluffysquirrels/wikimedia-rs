@@ -29,8 +29,6 @@
   wrappers to avoid mixing the 2 up.
 * Cache metadata downloads
     * Log cache hits and misses, implement CacheManager.
-    * Add argument `--http-cache-mode` to disable caching, taking a value that is parsed into a  
-      [`http_cache_reqwest::CacheMode`](https://docs.rs/http-cache-reqwest/latest/http_cache_reqwest/enum.CacheMode.html)
 * Logging
     * Add HTTP fetch/download time at debug level.
     * Add total command time at debug level.

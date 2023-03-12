@@ -133,7 +133,7 @@ fn cache(
 
     Ok(http_cache_reqwest::Cache(
            http_cache_reqwest::HttpCache {
-               mode: http_cache_reqwest::CacheMode::Default,
+               mode: args.http_cache_mode,
                manager: http_cache_reqwest::CACacheManager {
                    path: cache_path_string,
                },

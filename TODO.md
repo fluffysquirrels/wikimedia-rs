@@ -3,16 +3,6 @@
 
 ## Must do before publishing
 
-* Cache metadata downloads
-    * Log cache hits and misses, implement CacheManager.
-    * Add argument `--http-cache-mode` to disable caching, taking a value that is parsed into a  
-      [`http_cache_reqwest::CacheMode`](https://docs.rs/http-cache-reqwest/latest/http_cache_reqwest/enum.CacheMode.html)
-* Investigate SHA1 performance  
-  To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
-    * wmd: 74s  
-      `cargo run -- download --job abstractsdump`
-    * sha1sum: 2s
-* Tidy up args to `operations::download_job_file`
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -27,12 +17,29 @@
            return a custom `Error` struct with an `kind: ErrorKind` field.
         *  Downloads fail. Retry automatically after a short delay or next
            time the cronjob runs.
+
+* Investigate SHA1 performance  
+  To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
+    * wmd: 74s  
+      `cargo run -- download --job abstractsdump`
+    * sha1sum: 2s
+    * `--release` ?
+* Tidy up args to `operations::download_job_file`
 * Validate dump name, job name to have no relative paths, path traversal.
-* Consider: making `http::{download, metadata}_client()` return different tuple struct
-  wrappers to avoid mixing the 2 up.
+* Logging to JSON
+    * Document `bunyan` support with `bunyan-view`.
 
 ## Might do
 
+* Consider: making `http::{download, metadata}_client()` return different tuple struct
+  wrappers to avoid mixing the 2 up.
+* Cache metadata downloads
+    * Log cache hits and misses, implement CacheManager.
+    * Add argument `--http-cache-mode` to disable caching, taking a value that is parsed into a  
+      [`http_cache_reqwest::CacheMode`](https://docs.rs/http-cache-reqwest/latest/http_cache_reqwest/enum.CacheMode.html)
+* Logging
+    * Add HTTP fetch/download time at debug level.
+    * Add total command time at debug level.
 * More unit testing
 * Logging to JSON
     * Possibly: Support logging both pretty format to stderr and JSON to a file

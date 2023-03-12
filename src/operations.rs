@@ -12,7 +12,6 @@ use crate::{
 use sha1::{Sha1, Digest};
 use std::{
     path::Path,
-    time::Duration,
 };
 use tokio_stream::StreamExt;
 use tracing::Level;
@@ -26,13 +25,15 @@ pub enum ExistingFileStatus {
     FileOk,
 }
 
+const DUMPS_WIKIMEDIA_SERVER: &'static str = "https://dumps.wikimedia.org";
+
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dumps(
     client: &http::Client
 ) -> Result<Vec<Dump>> {
-    let url = "https://dumps.wikimedia.org//backup-index-bydb.html";
+    let url = format!("{DUMPS_WIKIMEDIA_SERVER}/backup-index-bydb.html");
+
     let req = client.get(url)
-                    .timeout(Duration::from_secs(10))
                     .build()?;
 
     let fetch_res = http::fetch_text(&client, req).await?;
@@ -78,9 +79,8 @@ pub async fn get_dump_versions(
     client: &http::Client,
     dump_name: &DumpNameArg
 ) -> Result<Vec<Version>> {
-    let url = format!("https://dumps.wikimedia.org/{dump_name}/", dump_name = dump_name.value);
+    let url = format!("{DUMPS_WIKIMEDIA_SERVER}/{dump_name}/", dump_name = dump_name.value);
     let req = client.get(url.clone())
-                    .timeout(Duration::from_secs(10))
                     .build()?;
 
     let fetch_res = http::fetch_text(&client, req).await?;
@@ -144,11 +144,10 @@ pub async fn get_dump_version_status(
         },
     };
 
-    let url = format!("https://dumps.wikimedia.org/{dump_name}/{ver}/dumpstatus.json",
+    let url = format!("{DUMPS_WIKIMEDIA_SERVER}/{dump_name}/{ver}/dumpstatus.json",
                       dump_name = dump_name.value,
                       ver = ver.0);
     let req = client.get(url.clone())
-                    .timeout(Duration::from_secs(10))
                     .build()?;
 
     let fetch_res = http::fetch_text(&client, req).await?;
@@ -243,14 +242,13 @@ pub async fn download_job_file(
 
     let temp_file_path = temp_dir.path()?.join(&*file_name);
 
+    std::fs::create_dir_all(&*file_out_dir_path)?;
+
     tracing::info!(
         url,
         out_path = %file_out_path.display(),
-        out_temp_path = %temp_file_path.display(),
         expected_len = file_meta.size,
-        "download_job_file starting");
-
-    std::fs::create_dir_all(&*file_out_dir_path)?;
+        "download_job_file starting download");
 
     let download_request = client.get(url.clone())
                                  .build()?;
@@ -294,6 +292,13 @@ pub async fn download_job_file(
     tracing::debug!(temp_file_path = %temp_file_path.display(),
                     file_out_path = %file_out_path.display(),
                     "Moved downloaded file from temp directory to output directory");
+
+    tracing::info!(duration = ?download_result.duration,
+                   download_rate = %download_result.download_rate(),
+                   url,
+                   out_path = %file_out_path.display(),
+                   len = file_meta.size,
+                   "download_job_file download complete, file OK");
 
     Ok(())
 }

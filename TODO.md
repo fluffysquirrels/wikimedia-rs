@@ -18,12 +18,6 @@
         *  Downloads fail. Retry automatically after a short delay or next
            time the cronjob runs.
 
-* Investigate SHA1 performance  
-  To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
-    * wmd: 74s  
-      `cargo run -- download --job abstractsdump`
-    * sha1sum: 2s
-    * `--release` ?
 * Tidy up args to `operations::download_job_file`
 * Validate dump name, job name to have no relative paths, path traversal.
 * Logging to JSON
@@ -167,3 +161,10 @@
         * Just cache for a configurable n seconds, keep if cache file
           modified time is newer, delete and ignore if file modified
           time is older.
+* Investigate SHA1 performance  
+  To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
+    * wmd debug: 74s  
+      `cargo run -- download --job abstractsdump`
+    * wmd release with rustflags = `-C target-cpu=native`: 6s
+    * sha1sum: 2s
+    * `--release` ?

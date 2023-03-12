@@ -1011,6 +1011,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4a1e36c821dbe04574f602848a19f742f4fb3c98d40449f11bcad18d6b17421"
 
 [[package]]
+name = "human_format"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86cce260d758a9aa3d7c4b99d55c815a540f8a37514ba6046ab6be402a157cb0"
+
+[[package]]
 name = "hyper"
 version = "0.14.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2713,8 +2719,11 @@ dependencies = [
  "chrono",
  "clap",
  "clap_complete",
+ "encoding_rs",
  "hex",
  "http-cache-reqwest",
+ "human_format",
+ "mime",
  "once_cell",
  "rand 0.8.5",
  "regex",

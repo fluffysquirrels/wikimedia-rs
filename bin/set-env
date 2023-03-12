@@ -7,7 +7,7 @@ elif test -n "$ZSH_NAME" ; then script=${(%):-%x}
 else script=$0
 fi
 
-readonly crate_dir="$( cd -- $(dirname "${script}")/..; pwd )";
+crate_dir="$( cd -- $(dirname "${script}")/..; pwd )";
 
 export RUST_LOG='wmd=debug'
 export WMD_MIRROR_URL='https://ftp.acc.umu.se/mirror/wikimedia.org/dumps'

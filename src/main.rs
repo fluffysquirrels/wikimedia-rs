@@ -49,6 +49,8 @@ enum LogMode {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let start_time = std::time::Instant::now();
+
     let args = Args::parse();
 
     init_logging(args.log_json)?;
@@ -65,6 +67,10 @@ async fn main() -> Result<()> {
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
     };
+
+    let duration = start_time.elapsed();
+
+    tracing::debug!(?duration, "wmd::main() returning");
 
     Ok(())
 }

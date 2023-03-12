@@ -28,7 +28,7 @@ pub enum ExistingFileStatus {
 
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dumps(
-    client: &reqwest::Client
+    client: &http::Client
 ) -> Result<Vec<Dump>> {
     let url = "https://dumps.wikimedia.org//backup-index-bydb.html";
     let req = client.get(url)
@@ -75,7 +75,7 @@ pub async fn get_dumps(
 
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dump_versions(
-    client: &reqwest::Client,
+    client: &http::Client,
     dump_name: &DumpNameArg
 ) -> Result<Vec<Version>> {
     let url = format!("https://dumps.wikimedia.org/{dump_name}/", dump_name = dump_name.value);
@@ -122,7 +122,7 @@ pub async fn get_dump_versions(
 
 #[tracing::instrument(level = "trace", skip(client), ret)]
 pub async fn get_dump_version_status(
-    client: &reqwest::Client,
+    client: &http::Client,
     dump_name: &DumpNameArg,
     version_spec: &VersionSpec,
 ) -> Result<(Version, DumpVersionStatus)> {
@@ -161,7 +161,7 @@ pub async fn get_dump_version_status(
 
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_job_status(
-    client: &reqwest::Client,
+    client: &http::Client,
     dump_name: &DumpNameArg,
     version_spec: &VersionSpec,
     job_name: &JobNameArg,
@@ -192,7 +192,7 @@ pub async fn get_job_status(
 
 #[tracing::instrument(level = "trace", skip(client), ret)]
 pub async fn get_file_infos(
-    client: &reqwest::Client,
+    client: &http::Client,
     dump_name: &DumpNameArg,
     version_spec: &VersionSpec,
     job_name: &JobNameArg,
@@ -211,7 +211,7 @@ pub async fn get_file_infos(
 
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn download_job_file(
-    client: &reqwest::Client,
+    client: &http::Client,
     dump_name: &DumpNameArg,
     ver: &Version,
     job_name: &JobNameArg,

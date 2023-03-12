@@ -1,9 +1,15 @@
 //! Shared code for making HTTP requests
 
 use anyhow::Context;
-use crate::Result;
+use crate::{
+    args,
+    Result,
+};
 use sha1::{Digest, Sha1};
-use std::path::Path;
+use std::{
+    path::Path,
+    time::Duration,
+};
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 use tracing::Level;
@@ -22,19 +28,73 @@ pub struct FetchTextResult {
     pub response_code: reqwest::StatusCode,
 }
 
-pub fn client() -> Result<reqwest::Client> {
+pub type Client = reqwest_middleware::ClientWithMiddleware;
+
+/// Constructs a `Client` suitable for fetching metadata.
+///
+/// Currently enables gzip compression, HTTP caching, and request and connection timeouts.
+pub fn metadata_client(args: &args::CommonArgs) -> Result<Client> {
+    let inner = inner_client_common()?
+                    .timeout(Duration::from_secs(15))
+                    .gzip(true)
+                    .build()?;
+
+    let with_middleware =
+        reqwest_middleware::ClientBuilder::new(inner)
+            .with(cache(&args)?)
+            .build();
+
+    Ok(with_middleware)
+}
+
+fn cache(
+    args: &args::CommonArgs
+) -> Result<http_cache_reqwest::Cache<http_cache_reqwest::CACacheManager>> {
+    let cache_path = args.http_cache_path();
+    std::fs::create_dir_all(&*cache_path)
+        .context("while creating HTTP cache directory")?;
+    let cache_path_string = cache_path.to_str().ok_or_else(
+                                || anyhow::Error::msg(format!(
+                                      "Couldn't convert HTTP cache path '{path}' to a String",
+                                      path = args.http_cache_path().display())))?.to_string();
+
+    Ok(http_cache_reqwest::Cache(
+           http_cache_reqwest::HttpCache {
+               mode: http_cache_reqwest::CacheMode::Default,
+               manager: http_cache_reqwest::CACacheManager {
+                   path: cache_path_string,
+               },
+               options: None,
+           }))
+}
+
+/// Constructs a `Client` suitable for downloading large files.
+///
+/// Currently disables gzip compression, HTTP caching; enables only a connection timeout.
+pub fn download_client(_args: &args::CommonArgs) -> Result<Client> {
+    let inner = inner_client_common()?
+                    .gzip(false)
+                    .build()?;
+    let with_middleware =
+        reqwest_middleware::ClientBuilder::new(inner)
+            .build();
+
+    Ok(with_middleware)
+}
+
+fn inner_client_common() -> Result<reqwest::ClientBuilder> {
     Ok(reqwest::ClientBuilder::new()
            .user_agent(concat!(
                env!("CARGO_PKG_NAME"),
                "/",
-               env!("CARGO_PKG_VERSION"),
-               ))
-           .build()?)
+               env!("CARGO_PKG_VERSION"),))
+           .connect_timeout(Duration::from_secs(10))
+    )
 }
 
 #[tracing::instrument(level = "trace", skip(client), ret)]
 pub async fn download_file(
-    client: &reqwest::Client,
+    client: &Client,
     request: reqwest::Request,
     file_path: &Path,
 ) -> Result<DownloadFileResult> {
@@ -114,7 +174,7 @@ pub async fn download_file(
     fields(url = %request.url().clone(),
            method = %request.method().clone()))]
 pub async fn fetch_text(
-    client: &reqwest::Client,
+    client: &Client,
     request: reqwest::Request,
 ) -> Result<FetchTextResult> {
 

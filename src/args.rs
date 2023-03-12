@@ -2,10 +2,23 @@ use crate::{
     types::{Version, VersionSpec},
     UserRegex,
 };
-use std::str::FromStr;
+use std::{
+    path::PathBuf,
+    str::FromStr,
+};
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct CommonArgs {}
+pub struct CommonArgs {
+    /// The directory to save the program's output, including downloaded files and HTTP cache.
+    ///
+    /// The dump files will be placed in a child directory of this.
+    /// With `--out-dir` set to `./out`, dump file paths will be like:
+    /// `./out/enwiki/20230301/metacurrentdumprecombine/enwiki-20230301-pages-articles.xml.bz2`
+    ///
+    /// If not present tries to read the environment variable `WMD_OUT_DIR`.
+    #[arg(long, env = "WMD_OUT_DIR")]
+    pub out_dir: PathBuf,
+}
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct DumpNameArg {
@@ -24,6 +37,12 @@ pub struct VersionSpecArg {
     /// The value must be 8 numerical digits (e.g. "20230301") or the string "latest".
     #[arg(id = "version", long = "version", default_value = "latest")]
     pub value: VersionSpec,
+}
+
+impl CommonArgs {
+    pub fn http_cache_path(&self) -> PathBuf {
+        self.out_dir.join("_http_cache")
+    }
 }
 
 impl FromStr for VersionSpec {

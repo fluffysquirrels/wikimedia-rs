@@ -6,7 +6,6 @@ use crate::{
     Result,
     TempDir,
 };
-use std::path::PathBuf;
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -25,16 +24,6 @@ pub struct Args {
 
     #[clap(flatten)]
     file_name_regex: FileNameRegexArg,
-
-    /// The directory to download to.
-    ///
-    /// The dump files will be placed in a child directory of this.
-    /// With `--out-dir` set to `./out`, dump file paths will be like:
-    /// `./out/enwiki/20230301/metacurrentdumprecombine/enwiki-20230301-pages-articles.xml.bz2`
-    ///
-    /// If not present tries to read the environment variable `WMD_OUT_DIR`.
-    #[arg(long, env = "WMD_OUT_DIR")]
-    out_dir: PathBuf,
 
     /// Keep the temporary directory where files are initially downloaded. By default this is deleted after use.
     #[arg(long, default_value_t = false)]
@@ -60,20 +49,21 @@ pub async fn main(args: Args) -> Result<()> {
     let dump_name = &*args.dump_name.value;
     let job_name = &*args.job_name.value;
 
-    let client = http::client()?;
+    let metadata_client = http::metadata_client(&args.common)?;
 
     let (ver, files) = operations::get_file_infos(
-        &client,
+        &metadata_client,
         &args.dump_name,
         &args.version_spec.value,
         &args.job_name,
         args.file_name_regex.value.as_ref()).await?;
 
-    let temp_dir = TempDir::create(&*args.out_dir, args.keep_temp_dir)?;
+    let temp_dir = TempDir::create(&*args.common.out_dir, args.keep_temp_dir)?;
+    let download_client = http::download_client(&args.common)?;
 
     for (_file_name, file_meta) in files.iter() {
-        operations::download_job_file(&client, &args.dump_name, &ver, &args.job_name,
-                                      &*args.mirror_url, file_meta, &*args.out_dir,
+        operations::download_job_file(&download_client, &args.dump_name, &ver, &args.job_name,
+                                      &*args.mirror_url, file_meta, &*args.common.out_dir,
                                       &temp_dir).await
             .with_context(|| format!(
                 "while downloading job file dump='{dump_name}' version='{ver}' job='{job_name}' \

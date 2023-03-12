@@ -20,7 +20,7 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let client = http::client()?;
+    let client = http::metadata_client(&args.common)?;
 
     let mut vers = operations::get_dump_versions(&client, &args.dump_name).await?;
     vers.sort();

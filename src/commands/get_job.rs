@@ -30,7 +30,7 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let dump_name = &*args.dump_name.value;
 
-    let client = http::client()?;
+    let client = http::metadata_client(&args.common)?;
 
     let(ver, ver_status) = operations::get_dump_version_status(&client, &args.dump_name,
                                                                &args.version.value).await?;

@@ -101,8 +101,9 @@ fn init_logging(log_json: bool) -> Result<()> {
               })
         .with(if log_mode == LogMode::Json {
                   Some(JsonStorageLayer
-                           .and_then(BunyanFormattingLayer::new("wmd".to_string(),
-                                                                std::io::stderr)))
+                           .and_then(BunyanFormattingLayer::new(
+                               env!("CARGO_CRATE_NAME").to_string(),
+                               std::io::stderr)))
               } else {
                   None
               })

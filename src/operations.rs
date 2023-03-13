@@ -26,7 +26,13 @@ pub enum ExistingFileStatus {
 }
 
 #[derive(Clone, Debug)]
-pub enum DownloadJobFileResult {
+pub struct DownloadJobFileResult {
+    pub kind: DownloadJobFileResultKind,
+    pub len: u64,
+}
+
+#[derive(Clone, Debug)]
+pub enum DownloadJobFileResultKind {
     DownloadOk,
     ExistingOk,
 }
@@ -241,7 +247,10 @@ pub async fn download_job_file(
 
     match check_existing_file(&*file_out_path, file_meta, &*url).await? {
         ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck
-            => return Ok(DownloadJobFileResult::ExistingOk),
+            => return Ok(DownloadJobFileResult {
+                             kind: DownloadJobFileResultKind::ExistingOk,
+                             len: file_meta.size,
+                         }),
         _ => (),
     };
 
@@ -304,10 +313,13 @@ pub async fn download_job_file(
                    download_rate = %download_result.download_rate(),
                    url,
                    out_path = %file_out_path.display(),
-                   len = file_meta.size,
+                   len = download_result.len,
                    "download_job_file download complete, file OK");
 
-    Ok(DownloadJobFileResult::DownloadOk)
+    Ok(DownloadJobFileResult {
+        kind: DownloadJobFileResultKind::DownloadOk,
+        len: download_result.len,
+    })
 }
 
 fn validate_file_relative_url(url: &str) -> Result<()> {
@@ -424,12 +436,10 @@ async fn check_existing_file(
 
         if expected_sha1 == existing_sha1 {
             // Existing file's SHA1 hash was correct, return Ok.
-            tracing::debug!(file_len = expected_len,
-                            file_path = %path.display(),
-                            sha1 = expected_sha1,
-                            url,
-                            "Existing file OK: SHA1 hash and file size are \
-                             correct.");
+            tracing::info!(file_path = %path.display(),
+                           url,
+                           "Existing file OK: SHA1 hash and file size are \
+                            correct.");
             return Ok(ExistingFileStatus::FileOk);
         } else {
             // Existing file's SHA1 hash was incorrect, delete it.

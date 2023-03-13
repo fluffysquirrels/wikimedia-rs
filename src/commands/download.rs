@@ -2,10 +2,11 @@ use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, FileNameRegexArg, JobNameArg, VersionSpecArg},
     http,
-    operations::{self, DownloadJobFileResult},
+    operations::{self, DownloadJobFileResultKind},
     Result,
     TempDir,
 };
+use std::time::Instant;
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -46,6 +47,8 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
+    let start_time = Instant::now();
+
     let dump_name = &*args.dump_name.value;
     let job_name = &*args.job_name.value;
 
@@ -62,7 +65,9 @@ pub async fn main(args: Args) -> Result<()> {
     let download_client = http::download_client(&args.common)?;
 
     let mut download_ok: u64 = 0;
+    let mut download_len: u64 = 0;
     let mut existing_ok: u64 = 0;
+    let mut existing_len: u64 = 0;
 
     for (_file_name, file_meta) in files.iter() {
         let res =
@@ -77,16 +82,27 @@ pub async fn main(args: Args) -> Result<()> {
                      file='{file_rel_url}'",
                     ver = ver.0,
                     file_rel_url = &*file_meta.url))?;
-        match res {
-            DownloadJobFileResult::DownloadOk => { download_ok += 1 },
-            DownloadJobFileResult::ExistingOk => { existing_ok += 1 },
+        match res.kind {
+            DownloadJobFileResultKind::DownloadOk => {
+                download_ok += 1;
+                download_len += res.len;
+            },
+            DownloadJobFileResultKind::ExistingOk => {
+                existing_ok += 1;
+                existing_len += res.len;
+            },
         }
     }
 
     drop(temp_dir);
 
+    let duration = start_time.elapsed();
+
     tracing::info!(download_ok,
+                   download_len,
                    existing_ok,
+                   existing_len,
+                   ?duration,
                    "download command complete");
 
     Ok(())

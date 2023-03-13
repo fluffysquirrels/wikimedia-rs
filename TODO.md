@@ -23,8 +23,38 @@
 * Logging to JSON
     * Document `bunyan` support with `bunyan-view`.
 * `get-page`
+    * Progress.
     * More fields.
     * `<siteinfo>`
+    * Performance.
+    * Output text option
+    * `pandoc` output support?
+```sh
+wmd get-page --article-dump-file out/enwiki/20230301/articlesdump/enwiki-20230301-pages-articles10.xml-p4045403p5399366.bz2 \
+    jq --null-input 'input' \
+    | tee >(jq --raw-output '.title' > ~/tmp/page.title) \
+    | jq --raw-output '.revision.text' > ~/tmp/page.mediawiki \
+    && < ~/tmp/page.mediawiki \
+       pandoc --from mediawiki \
+              --to html \
+              --sandbox \
+              --standalone \
+              --toc \
+              --number-sections \
+              --number-offset "1" \
+              --metadata title:"$(cat ~/tmp/page.title)" \
+              --lua-filter <(echo '
+                    function Link(el)
+                        return pandoc.Link(el.content, "https://en.wikipedia.org/wiki/" .. el.target)
+                    end
+                ') \
+    > ~/tmp/page.html \
+    && xdg-open ~/tmp/page.html
+```
+    * TODO: Sanitise HTML
+* Pipelining straight from download into target format.
+* Flatbuffers
+* RocksDB
 
 ## Might do
 

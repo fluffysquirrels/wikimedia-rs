@@ -6,7 +6,7 @@ use crate::{
     Result,
     TempDir,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -69,6 +69,12 @@ pub async fn main(args: Args) -> Result<()> {
     let mut existing_ok: u64 = 0;
     let mut existing_len: u64 = 0;
 
+    // let progress = indicatif::ProgressBar::new(files.len().try_into()
+    //                                                 .expect("convert usize to u64"));
+    // progress.set_style(indicatif::ProgressStyle::with_template(
+    //     "{bar:40} {pos}/{len} files {elapsed_precise}, eta {eta_precise} {msg}")?);
+    // progress.enable_steady_tick(Duration::from_millis(100));
+
     for (_file_name, file_meta) in files.iter() {
         let res =
             operations::download_job_file(&download_client, &args.dump_name, &ver, &args.job_name,
@@ -91,8 +97,11 @@ pub async fn main(args: Args) -> Result<()> {
                 existing_ok += 1;
                 existing_len += res.len;
             },
-        }
+        };
+        // progress.inc(1);
     }
+
+    // progress.abandon_with_message("All done!");
 
     drop(temp_dir);
 
@@ -109,7 +118,6 @@ pub async fn main(args: Args) -> Result<()> {
 
     Ok(())
 }
-
 
 fn fmt_bytes(len: u64) -> String {
     human_format::Formatter::new()

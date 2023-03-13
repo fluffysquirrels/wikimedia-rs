@@ -156,9 +156,9 @@ pub async fn download_file(
     // Closure to add context to errors.
     (async || {
 
-        tracing::info!(url = %url.clone(),
-                       method = %method.clone(),
-                       "Beginning HTTP download");
+        tracing::debug!(url = %url.clone(),
+                        method = %method.clone(),
+                        "http::download_file() beginning");
 
         let mut file = tokio::fs::OpenOptions::new()
             .create_new(true)
@@ -175,7 +175,7 @@ pub async fn download_file(
                         method = %method.clone(),
                         response_code = download_res_code_int,
                         response_code_str = download_res_code_str,
-                        "download_file HTTP status");
+                        "http::download_file() response HTTP status");
 
         if !download_res_code.is_success() {
             return Err(anyhow::Error::msg(
@@ -208,12 +208,20 @@ pub async fn download_file(
 
         let duration = start_time.elapsed();
 
-        Ok(DownloadFileResult {
+        let res = DownloadFileResult {
             response_code: download_res_code,
             sha1: sha1_hash_string,
             len: file_len,
             duration,
-        })
+        };
+
+        tracing::debug!(url = %url.clone(),
+                        method = %method.clone(),
+                        ?duration,
+                        download_rate = %res.download_rate(),
+                        "http::download_file() done");
+
+        Ok(res)
     })().await.with_context(|| format!("while downloading HTTP response to file \
                                         url='{url}' \
                                         method={method} \
@@ -240,7 +248,7 @@ pub async fn fetch_text(
     (async || {
         tracing::info!(url = %url.clone(),
                        method = %method.clone(),
-                       "Beginning HTTP fetch_text");
+                       "http::fetch_text() beginning");
 
         let response = client.execute(request).await?;
 

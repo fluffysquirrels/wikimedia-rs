@@ -25,6 +25,12 @@ pub enum ExistingFileStatus {
     FileOk,
 }
 
+#[derive(Clone, Debug)]
+pub enum DownloadJobFileResult {
+    DownloadOk,
+    ExistingOk,
+}
+
 const DUMPS_WIKIMEDIA_SERVER: &'static str = "https://dumps.wikimedia.org";
 
 #[tracing::instrument(level = "trace", skip(client))]
@@ -208,7 +214,7 @@ pub async fn get_file_infos(
     Ok((ver, files))
 }
 
-#[tracing::instrument(level = "trace", skip(client))]
+#[tracing::instrument(level = "trace", ret, skip(client))]
 pub async fn download_job_file(
     client: &http::Client,
     dump_name: &DumpNameArg,
@@ -218,7 +224,7 @@ pub async fn download_job_file(
     file_meta: &FileMetadata,
     out_dir: &Path,
     temp_dir: &TempDir,
-) -> Result<()> {
+) -> Result<DownloadJobFileResult> {
     validate_file_relative_url(&*file_meta.url)?;
 
     let url =
@@ -234,7 +240,8 @@ pub async fn download_job_file(
                                              job_name = &*job_name.value));
 
     match check_existing_file(&*file_out_path, file_meta, &*url).await? {
-        ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck => return Ok(()),
+        ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck
+            => return Ok(DownloadJobFileResult::ExistingOk),
         _ => (),
     };
 
@@ -300,7 +307,7 @@ pub async fn download_job_file(
                    len = file_meta.size,
                    "download_job_file download complete, file OK");
 
-    Ok(())
+    Ok(DownloadJobFileResult::DownloadOk)
 }
 
 fn validate_file_relative_url(url: &str) -> Result<()> {

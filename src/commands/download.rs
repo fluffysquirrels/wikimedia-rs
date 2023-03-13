@@ -2,7 +2,7 @@ use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, FileNameRegexArg, JobNameArg, VersionSpecArg},
     http,
-    operations,
+    operations::{self, DownloadJobFileResult},
     Result,
     TempDir,
 };
@@ -61,18 +61,33 @@ pub async fn main(args: Args) -> Result<()> {
     let temp_dir = TempDir::create(&*args.common.out_dir, args.keep_temp_dir)?;
     let download_client = http::download_client(&args.common)?;
 
+    let mut download_ok: u64 = 0;
+    let mut existing_ok: u64 = 0;
+
     for (_file_name, file_meta) in files.iter() {
-        operations::download_job_file(&download_client, &args.dump_name, &ver, &args.job_name,
-                                      &*args.mirror_url, file_meta, &*args.common.out_dir,
-                                      &temp_dir).await
-            .with_context(|| format!(
-                "while downloading job file dump='{dump_name}' version='{ver}' job='{job_name}' \
-                 file='{file_rel_url}'",
-                ver = ver.0,
-                file_rel_url = &*file_meta.url))?;
+        let res =
+            operations::download_job_file(&download_client, &args.dump_name, &ver, &args.job_name,
+                                          &*args.mirror_url, file_meta, &*args.common.out_dir,
+                                          &temp_dir).await
+                .with_context(|| format!(
+                    "while downloading job file \
+                     dump='{dump_name}' \
+                     version='{ver}' \
+                     job='{job_name}' \
+                     file='{file_rel_url}'",
+                    ver = ver.0,
+                    file_rel_url = &*file_meta.url))?;
+        match res {
+            DownloadJobFileResult::DownloadOk => { download_ok += 1 },
+            DownloadJobFileResult::ExistingOk => { existing_ok += 1 },
+        }
     }
 
     drop(temp_dir);
+
+    tracing::info!(download_ok,
+                   existing_ok,
+                   "download command complete");
 
     Ok(())
 }

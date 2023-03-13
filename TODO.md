@@ -22,6 +22,9 @@
 * Validate dump name, job name to have no relative paths, path traversal.
 * Logging to JSON
     * Document `bunyan` support with `bunyan-view`.
+* `get-page`
+    * More fields.
+    * `<siteinfo>`
 
 ## Might do
 
@@ -29,9 +32,6 @@
   wrappers to avoid mixing the 2 up.
 * Cache metadata downloads
     * Log cache hits and misses, implement CacheManager.
-* Logging
-    * Add HTTP fetch/download time at debug level.
-    * Add total command time at debug level.
 * More unit testing
 * Logging to JSON
     * Possibly: Support logging both pretty format to stderr and JSON to a file
@@ -61,6 +61,9 @@
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
+* Reading xml dumps
+    * `xml-rs` looks ok https://docs.rs/xml-rs/latest/xml/index.html
+    * `quick-xml` looks ok https://docs.rs/quick-xml/latest/quick_xml/
 * Some kind of indexed lookup
     * bzip2 is very slow (12MB/s on my laptop)
     * Decompressed data would be faster to use, but 4-5x the size, so

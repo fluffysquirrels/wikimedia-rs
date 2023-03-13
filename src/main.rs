@@ -38,6 +38,7 @@ enum Command {
     GetDump(commands::get_dump::Args),
     GetFileInfo(commands::get_file_info::Args),
     GetJob(commands::get_job::Args),
+    GetPage(commands::get_page::Args),
     GetVersion(commands::get_version::Args),
 }
 
@@ -65,6 +66,7 @@ async fn main() -> Result<()> {
         Command::GetDump(cmd_args) => commands::get_dump::main(cmd_args).await?,
         Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
+        Command::GetPage(cmd_args) => commands::get_page::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
     };
 

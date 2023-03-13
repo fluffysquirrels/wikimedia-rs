@@ -100,10 +100,21 @@ pub async fn main(args: Args) -> Result<()> {
 
     tracing::info!(download_ok,
                    download_len,
+                   download_len_str = fmt_bytes(download_len),
                    existing_ok,
                    existing_len,
+                   existing_len_str = fmt_bytes(existing_len),
                    ?duration,
                    "download command complete");
 
     Ok(())
+}
+
+
+fn fmt_bytes(len: u64) -> String {
+    human_format::Formatter::new()
+        .with_scales(human_format::Scales::SI())
+        .with_decimals(2)
+        .with_units("B")
+        .format(len as f64)
 }

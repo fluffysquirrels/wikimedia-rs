@@ -1,14 +1,12 @@
-use clap::builder::PossibleValue;
+mod http_cache_mode;
+use http_cache_mode::HttpCacheModeParser;
+
 use crate::{
     types::{Version, VersionSpec},
     UserRegex,
 };
 use http_cache_reqwest::CacheMode as HttpCacheMode;
-use once_cell::sync::Lazy;
 use std::{
-    collections::BTreeMap,
-    ffi::OsStr,
-    ops::Deref,
     path::PathBuf,
     str::FromStr,
 };
@@ -76,67 +74,6 @@ pub struct JsonOutputArg {
     /// Print results to stdout as JSON. By default the data will be printed as text.
     #[arg(id = "json", long = "json", default_value_t = false)]
     pub value: bool,
-}
-
-#[derive(Clone)]
-struct HttpCacheModeParser;
-
-static HTTP_CACHE_MODE_MAP: Lazy<BTreeMap<String, HttpCacheMode>> = Lazy::new(|| {
-    let mut map = BTreeMap::new();
-
-    let mut add = |val: HttpCacheMode| {
-        map.insert(format!("{:?}", val), val);
-    };
-
-    add(HttpCacheMode::Default);
-    add(HttpCacheMode::NoStore);
-    add(HttpCacheMode::Reload);
-    add(HttpCacheMode::NoCache);
-    add(HttpCacheMode::ForceCache);
-    add(HttpCacheMode::OnlyIfCached);
-
-    drop(add);
-
-    map
-});
-
-impl clap::builder::TypedValueParser for HttpCacheModeParser {
-    type Value = HttpCacheMode;
-
-    fn parse_ref(
-        &self,
-        _cmd: &clap::Command,
-        _arg: Option<&clap::Arg>,
-        value: &OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        let value_cow = value.to_string_lossy();
-        HTTP_CACHE_MODE_MAP.get(value_cow.deref())
-            .ok_or_else(|| clap::Error::raw(
-                clap::error::ErrorKind::InvalidValue,
-                format!("Argument value was not a valid HttpCache value: '{value_cow}'. \
-                         Possible values are: {vals}.\n",
-                        vals = HTTP_CACHE_MODE_MAP.keys()
-                                                  .map(|s| format!("'{s}'"))
-                                                  .collect::<Vec<String>>()
-                                                  .join(", ")
-                                           )))
-            .cloned()
-    }
-
-    fn possible_values(
-        &self
-    ) -> Option<Box<dyn Iterator<Item = PossibleValue>>> {
-        Some(Box::new(
-            HTTP_CACHE_MODE_MAP.keys()
-                               .map(|name: &String| {
-                                   let clap_str: clap::builder::Str = name.into();
-                                   let possible_value: PossibleValue = clap_str.into();
-                                   possible_value
-                               })
-                               .collect::<Vec<PossibleValue>>()
-                               .into_iter()
-        ))
-    }
 }
 
 impl CommonArgs {

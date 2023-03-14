@@ -5,9 +5,12 @@
 mod lazy_regex;
 
 mod args;
+mod article_dump;
 mod commands;
+mod fbs;
 mod http;
 mod operations;
+mod page_store;
 mod temp_dir;
 mod types;
 mod user_regex;
@@ -36,10 +39,12 @@ enum Command {
     Completion(commands::completion::Args),
     Download(commands::download::Args),
     GetDump(commands::get_dump::Args),
+    GetDumpPage(commands::get_dump_page::Args),
     GetFileInfo(commands::get_file_info::Args),
     GetJob(commands::get_job::Args),
-    GetPage(commands::get_page::Args),
+    GetStorePage(commands::get_store_page::Args),
     GetVersion(commands::get_version::Args),
+    ImportDump(commands::import_dump::Args),
 }
 
 #[derive(Eq, PartialEq)]
@@ -64,10 +69,12 @@ async fn main() -> Result<()> {
         Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
         Command::GetDump(cmd_args) => commands::get_dump::main(cmd_args).await?,
+        Command::GetDumpPage(cmd_args) => commands::get_dump_page::main(cmd_args).await?,
         Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
         Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
-        Command::GetPage(cmd_args) => commands::get_page::main(cmd_args).await?,
+        Command::GetStorePage(cmd_args) => commands::get_store_page::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
+        Command::ImportDump(cmd_args) => commands::import_dump::main(cmd_args).await?,
     };
 
     let duration = start_time.elapsed();

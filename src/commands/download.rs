@@ -6,7 +6,7 @@ use crate::{
     Result,
     TempDir,
 };
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -35,12 +35,12 @@ pub struct Args {
     /// If not present tries to read the environment variable `WMD_MIRROR_URL`.
     ///
     /// Examples:
-    ///   * https://dumps.wikimedia.org
-    ///   * https://ftp.acc.umu.se/mirror/wikimedia.org/dumps
+    ///   * <https://dumps.wikimedia.org>
+    ///   * <https://ftp.acc.umu.se/mirror/wikimedia.org/dumps>
     ///
-    /// Note that only job files are downloaded from this mirror, metadata files are downloaded from https://dumps.wikimedia.org to ensure we get the freshest data.
+    /// Note that only job files are downloaded from this mirror, metadata files are downloaded from <https://dumps.wikimedia.org> to ensure we get the freshest data.
     ///
-    /// To find a mirror, see https://meta.wikimedia.org/wiki/Mirroring_Wikimedia_project_XML_dumps#Current_mirrors
+    /// To find a mirror, see <https://meta.wikimedia.org/wiki/Mirroring_Wikimedia_project_XML_dumps#Current_mirrors>
     #[arg(long, env = "WMD_MIRROR_URL")]
     mirror_url: String,
 }

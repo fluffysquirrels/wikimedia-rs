@@ -26,7 +26,7 @@ pub struct CommonArgs {
     /// HTTP cache mode to use when making requests.
     ///
     /// See the `http-cache` crate documentation for an explanation of each of the options:
-    /// https://docs.rs/http-cache/0.10.1/http_cache/enum.CacheMode.html
+    /// <https://docs.rs/http-cache/0.10.1/http_cache/enum.CacheMode.html>
     #[arg(long, default_value = "Default", value_parser = HttpCacheModeParser)]
     pub http_cache_mode: HttpCacheMode,
 }
@@ -64,7 +64,7 @@ pub struct JobNameArg {
 pub struct FileNameRegexArg {
     /// A regex to filter the file names to process from a job.
     ///
-    /// The regex syntax used is from the `regex` crate, see their documentation: https://docs.rs/regex/latest/regex/#syntax
+    /// The regex syntax used is from the `regex` crate, see their documentation: <https://docs.rs/regex/latest/regex/#syntax>
     #[arg(id = "file-name-regex", long="file-name-regex")]
     pub value: Option<UserRegex>,
 }
@@ -79,6 +79,10 @@ pub struct JsonOutputArg {
 impl CommonArgs {
     pub fn http_cache_path(&self) -> PathBuf {
         self.out_dir.join("_http_cache")
+    }
+
+    pub fn page_store_path(&self) -> PathBuf {
+        self.out_dir.join("_page_store")
     }
 }
 

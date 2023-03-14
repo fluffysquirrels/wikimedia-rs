@@ -22,16 +22,24 @@
 * Validate dump name, job name to have no relative paths, path traversal.
 * Logging to JSON
     * Document `bunyan` support with `bunyan-view`.
-* `get-page`
-    * Progress.
+* `bin/doc` script: `cargo doc --package wikimedia-downloader --package flatbuffers --document-private-items --no-deps --open`
+* import-dump
+    * do it all
+    * in parallel
+    * while downloading article dumps
+    * daemon
+    * search indices in RocksDB or sqlite? LMDB?
+        * tantivy: https://lib.rs/crates/tantivy
+        * https://lib.rs/crates/sonic-server
+* mod article_dump
     * More fields.
     * `<siteinfo>`
-    * Performance.
-    * Output text option
-    * `pandoc` output support?
+    * Performance
+* `get-dump-page`
+    * `pandoc` output support
 ```sh
-wmd get-page --article-dump-file out/enwiki/20230301/articlesdump/enwiki-20230301-pages-articles10.xml-p4045403p5399366.bz2 \
-    jq --null-input 'input' \
+wmd get-page --article-dump-file out/articles.bz2 \
+    | jq --null-input 'input' \
     | tee >(jq --raw-output '.title' > ~/tmp/page.title) \
     | jq --raw-output '.revision.text' > ~/tmp/page.mediawiki \
     && < ~/tmp/page.mediawiki \
@@ -51,10 +59,28 @@ wmd get-page --article-dump-file out/enwiki/20230301/articlesdump/enwiki-2023030
     > ~/tmp/page.html \
     && xdg-open ~/tmp/page.html
 ```
+    * Fix external links
     * TODO: Sanitise HTML
 * Pipelining straight from download into target format.
 * Flatbuffers
+    * Read chunk as JSON using `flatc` in docker:
+```
+sudo docker run --rm \
+    -v ${PWD}/fbs:/fbs:ro \
+    -v ${PWD}/out:/out:ro \
+    neomantra/flatbuffers:latest \
+    sh -c '
+        set -e
+        cd /tmp
+        flatc --defaults-json --json --size-prefixed \
+            /fbs/wikimedia.fbs -- /out/articles.fbd
+        cat /tmp/articles.json
+    '
+```
+* Page Store
+    * Locking?
 * RocksDB
+* Save default out path on first use to config file.
 
 ## Might do
 

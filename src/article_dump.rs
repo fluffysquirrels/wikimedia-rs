@@ -1,40 +1,21 @@
+//! Read a Wikimedia article dump archive.
+
 use crate::{
-    args::{CommonArgs, DumpNameArg, JsonOutputArg, VersionSpecArg},
-    // operations,
     Result,
 };
 use quick_xml::events::Event;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
-
-/// Get pages from an article dump.
-#[derive(clap::Args, Clone, Debug)]
-pub struct Args {
-    #[clap(flatten)]
-    common: CommonArgs,
-
-//    #[clap(flatten)]
-//    dump_name: DumpNameArg,
-//
-//    #[clap(flatten)]
-//    version: VersionSpecArg,
-//
-//    /// The specific job name to get. By default information is returned about all jobs in the dump version.
-//    #[arg(long = "job")]
-//    job_name: Option<String>,
-
-    #[clap(flatten)]
-    json: JsonOutputArg,
-
-    #[arg(long)]
-    article_dump_file: PathBuf,
-}
+use std::{
+    io::BufRead,
+    iter::Iterator,
+    path::Path,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Page {
-    pub title: String,
     pub ns_id: u64,
     pub id: u64,
+    pub title: String,
     pub revision: Option<Revision>,
 }
 
@@ -43,11 +24,6 @@ pub struct Revision {
     pub id: u64,
     pub text: Option<String>,
 }
-
-use std::{
-    io::{BufRead, Read},
-    iter::Iterator,
-};
 
 pub struct PageIter<R: BufRead> {
     xml_read: quick_xml::reader::Reader<R>,
@@ -61,7 +37,7 @@ pub fn open_article_dump_file(file: &Path) -> Result<PageIter<impl BufRead>> {
     let bzip_bufread = std::io::BufReader::new(bzip_decoder);
     let xml_read = quick_xml::reader::Reader::from_reader(bzip_bufread);
 
-    let buf = Vec::<u8>::with_capacity(100_000);
+    let buf = Vec::<u8>::with_capacity(1_000_000);
 
     Ok(PageIter {
         xml_read,
@@ -165,19 +141,7 @@ impl<R: BufRead> Iterator for PageIter<R> {
     } // end of fn next
 } // end of impl Iterator for PageIter
 
-#[tracing::instrument(level = "trace")]
-pub async fn main(args: Args) -> Result<()> {
-
-    let pages = open_article_dump_file(&*args.article_dump_file)?;
-    for page in pages {
-        serde_json::to_writer_pretty(&std::io::stdout(), &(page?))?;
-        println!();
-    }
-
-    Ok(())
-}
-
-fn take_element_text<R: std::io::BufRead>(
+fn take_element_text<R: BufRead>(
     xml_read: &mut quick_xml::reader::Reader<R>,
     buf: &mut Vec<u8>,
     name: &[u8],

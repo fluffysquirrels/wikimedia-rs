@@ -1,5 +1,5 @@
 //! Based on the macro in the `once_cell` crate documentation:
-//! https://docs.rs/once_cell/1.17.1/once_cell/index.html#lazily-compiled-regex
+//! <https://docs.rs/once_cell/1.17.1/once_cell/index.html#lazily-compiled-regex>
 
 macro_rules! lazy_regex {
     ($re:literal $(,)?) => {{

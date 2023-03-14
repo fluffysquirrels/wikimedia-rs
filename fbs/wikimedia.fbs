@@ -1,0 +1,20 @@
+table Chunk {
+ pages:[Page] (required);
+}
+
+table Page {
+ ns_id:uint64;
+ id:uint64 (key);
+ title:string (required);
+ revision:Revision;
+}
+
+table Revision {
+ id:uint64;
+ text:string;
+}
+
+root_type Chunk;
+
+file_identifier "MWPC";
+file_extension "fbd";

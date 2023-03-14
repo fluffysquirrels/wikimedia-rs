@@ -5,4 +5,23 @@ readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
 cd "${crate_dir}"
 
+if [ "fbs/wikimedia.fbs" -nt "fbs/gen/wikimedia_generated.rs" ]; then
+    echo "Regenerating flatbuffer mods"
+
+    rm -rf fbs/gen
+    mkdir -p fbs/gen
+
+    sudo docker run --rm \
+        -v ${PWD}/fbs:/fbs:ro \
+        neomantra/flatbuffers:latest \
+        sh -c '
+          set -e
+          mkdir -p /tmp/out
+          flatc --rust -o /tmp/out \
+            /fbs/wikimedia.fbs
+          cat /tmp/out/wikimedia_generated.rs
+        ' \
+        > fbs/gen/wikimedia_generated.rs
+fi
+
 cargo run --release -- "$@"

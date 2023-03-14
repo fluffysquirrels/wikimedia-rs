@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+
+readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
+
+cd "${crate_dir}"
+
+rm -rf target/completion.*
+
+bin/wmd completion --shell zsh > target/completion.zsh

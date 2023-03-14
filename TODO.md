@@ -36,7 +36,9 @@
     * `<siteinfo>`
     * Performance
 * `get-dump-page`
-    * `pandoc` output support
+* Render with `pandoc`
+    * Run from `wmd`
+    * Snippet:
 ```sh
 wmd get-page --article-dump-file out/articles.bz2 \
     | jq --null-input 'input' \
@@ -62,7 +64,10 @@ wmd get-page --article-dump-file out/articles.bz2 \
     * Fix external links
     * TODO: Sanitise HTML
 * Pipelining straight from download into target format.
+* Clean up temp files (left from failed downloads) on future runs
 * Flatbuffers
+    * capnproto vs flatbuffers
+    * capnproto capabilities
     * Read chunk as JSON using `flatc` in docker:
 ```
 sudo docker run --rm \
@@ -78,9 +83,74 @@ sudo docker run --rm \
     '
 ```
 * Page Store
-    * Locking?
-* RocksDB
+    * Locking
+    * Compression
+        * LZ4
+            * decompression multiple times faster than snappy
+            * https://github.com/PSeitz/lz4_flex faster than lz4_fear, optionally unsafe
+            * `lz4_fear`: use master branch, has a bugfix.  
+              https://github.com/main--/rust-lz-fear  
+              https://docs.rs/lz-fear/latest/lz_fear/
+                * LZ4-HC not supported
+            * https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md
+            * Pre-trained dictionary compression
+            * snappy vs lz4: https://stackoverflow.com/a/67537112/94819
+            * C lib: https://lz4.github.io/lz4/
+        * snappy
+            * https://docs.rs/snap/latest/snap/
+            * https://github.com/google/snappy/blob/main/framing_format.txt
+        * zstd
+            * pure rust decompressor: https://github.com/KillingSpark/zstd-rs  
+              3.5x slower than original C++ implementation
+            * rust bindings for C++ lib: https://crates.io/crates/zstd
+        * lzo
+            * https://crates.io/crates/rust-lzo
+            * some bindings
+* Stores
+    * RocksDB
+    * https://crates.io/crates/marble
 * Save default out path on first use to config file.
+* Full text search
+    * List of engines: https://gist.github.com/manigandham/58320ddb24fed654b57b4ba22aceae25
+    * Rust
+        * https://docs.rs/tantivy/latest/tantivy/
+            * https://docs.rs/summavy/latest/summavy/index.html
+        * https://github.com/quickwit-oss/quickwit
+        * https://github.com/mosuka/bayard
+        * https://github.com/toshi-search/Toshi
+        * https://github.com/valeriansaliou/sonic
+    * Manticore Search: https://github.com/manticoresoftware/manticoresearch
+        * C++
+        * https://github.com/manticoresoftware/manticoresearch/blob/master/doc/internals-index-format.md
+        * https://manual.manticoresearch.com/Creating_a_table/Data_types#Row-wise-and-columnar-attribute-storages
+        * https://github.com/manticoresoftware/columnar
+        * https://manticoresearch.com/blog/manticore-alternative-to-elasticsearch/
+            * Manticore parallelises queries automatically to a single shard, ES does not.
+            * Lower write latency
+            * Ingestion is 2x faster
+            * Starts up faster
+    * MySQL
+    * Postgres
+    * sqlite
+    * http://www.sphinxsearch.co/
+    * Solr
+    * https://stackoverflow.com/questions/1284083/choosing-a-stand-alone-full-text-search-server-sphinx-or-solr/1297561#1297561
+    * OpenSearch / ElasticSearch
+    * ClickHouse
+    * https://github.com/typesense/typesense
+    * Datasets
+        * https://archive.org/details/stackexchange
+            * https://meta.stackexchange.com/questions/2677/database-schema-documentation-for-the-public-data-dump-and-sede
+        * https://zenodo.org/record/45901
+        * https://github.com/HackerNews/API
+        * bigquery datasets https://cloud.google.com/bigquery/public-data
+        * https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=samples&page=dataset
+        * https://aws.amazon.com/opendata/?wwps-cards.sort-by=item.additionalFields.sortDate&wwps-cards.sort-order=desc
+        * https://aws.amazon.com/marketplace/pp/prodview-zxtb4t54iqjmy?sr=0-1&ref_=beagle&applicationId=AWSMPContessa
+        * https://commoncrawl.org/
+        * https://skeptric.com/common-crawl-index-athena/
+        * https://github.com/awslabs/open-data-registry/tree/main/datasets
+        * https://registry.opendata.aws/
 
 ## Might do
 

@@ -18,6 +18,7 @@ clap_complete = "4.1.4"
 encoding_rs = "0.8"
 flatbuffers = "23.1.21"
 hex = "0.4.3"
+html-escape = "0.2.13"
 http-cache-reqwest = "0.8.0"
 human_format = "1.0.3"
 indicatif = "0.17.3"
@@ -33,7 +34,7 @@ scraper = "0.15.0"
 serde = { version = "1.0.100", features = ["derive"] }
 serde_json = "1.0.93"
 sha1 = { version = "0.10.5", features = ["asm"] }
-tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "tracing"] }
+tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "time", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["io"] }
 tracing = "0.1.37"

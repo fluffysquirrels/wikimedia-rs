@@ -14,6 +14,7 @@ mod page_store;
 mod temp_dir;
 mod types;
 mod user_regex;
+mod wikitext;
 
 use clap::Parser;
 use crate::{

@@ -3,6 +3,9 @@
 
 ## Must do before publishing
 
+* Document pre-requisites for build and run.
+    * docker
+    * pandoc
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -37,31 +40,8 @@
     * Performance
 * `get-dump-page`
 * Render with `pandoc`
-    * Run from `wmd`
-    * Snippet:
-```sh
-wmd get-page --article-dump-file out/articles.bz2 \
-    | jq --null-input 'input' \
-    | tee >(jq --raw-output '.title' > ~/tmp/page.title) \
-    | jq --raw-output '.revision.text' > ~/tmp/page.mediawiki \
-    && < ~/tmp/page.mediawiki \
-       pandoc --from mediawiki \
-              --to html \
-              --sandbox \
-              --standalone \
-              --toc \
-              --number-sections \
-              --number-offset "1" \
-              --metadata title:"$(cat ~/tmp/page.title)" \
-              --lua-filter <(echo '
-                    function Link(el)
-                        return pandoc.Link(el.content, "https://en.wikipedia.org/wiki/" .. el.target)
-                    end
-                ') \
-    > ~/tmp/page.html \
-    && xdg-open ~/tmp/page.html
-```
-    * Fix external links
+    * Rewrite image links
+    * Save lua filter to a file, reference it by path.
     * TODO: Sanitise HTML
 * Pipelining straight from download into target format.
 * Clean up temp files (left from failed downloads) on future runs
@@ -154,6 +134,21 @@ sudo docker run --rm \
 
 ## Might do
 
+* Wikimedia APIs
+    * Look at https://github.com/magnusmanske/mediawiki_rust
+    * EventStreams
+        * https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams
+        * https://docs.rs/eventstreams/latest/eventstreams/
+        * `curl -s -H 'Accept: application/json' \
+               https://stream.wikimedia.org/v2/stream/recentchange | jq .`
+* Wikimedia tools
+    * https://github.com/spencermountain/dumpster-dip
+    * https://github.com/spencermountain/dumpster-dive
+* MediaWiki wikitext
+    * https://www.mediawiki.org/wiki/Wikitext
+    * https://docs.rs/parse_wiki_text/latest/parse_wiki_text/
+    * https://crates.io/crates/mediawiki_parser -- not as complete
+    * https://www.mediawiki.org/wiki/Alternative_parsers
 * Consider: making `http::{download, metadata}_client()` return different tuple struct
   wrappers to avoid mixing the 2 up.
 * Cache metadata downloads
@@ -295,3 +290,27 @@ sudo docker run --rm \
     * wmd release with rustflags = `-C target-cpu=native`: 6s
     * sha1sum: 2s
     * `--release` ?
+* Render with `pandoc`
+    * Snippet:
+```sh
+wmd get-page --article-dump-file out/articles.bz2 \
+    | jq --null-input 'input' \
+    | tee >(jq --raw-output '.title' > ~/tmp/page.title) \
+    | jq --raw-output '.revision.text' > ~/tmp/page.mediawiki \
+    && < ~/tmp/page.mediawiki \
+       pandoc --from mediawiki \
+              --to html \
+              --sandbox \
+              --standalone \
+              --toc \
+              --number-sections \
+              --number-offset "1" \
+              --metadata title:"$(cat ~/tmp/page.title)" \
+              --lua-filter <(echo '
+                    function Link(el)
+                        return pandoc.Link(el.content, "https://en.wikipedia.org/wiki/" .. el.target)
+                    end
+                ') \
+    > ~/tmp/page.html \
+    && xdg-open ~/tmp/page.html
+```

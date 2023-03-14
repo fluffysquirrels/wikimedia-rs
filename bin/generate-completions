@@ -7,4 +7,5 @@ cd "${crate_dir}"
 
 rm -rf target/completion.*
 
-bin/wmd completion --shell zsh > target/completion.zsh
+bin/wmd completion --shell zsh > target/tmp_completion.zsh
+mv target/tmp_completion.zsh target/completion.zsh

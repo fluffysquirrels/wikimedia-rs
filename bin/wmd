@@ -5,6 +5,6 @@ readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
 cd "${crate_dir}"
 
-"${crate_dir}/bin/gen-flatbuffer"
+"${crate_dir}/bin/generate-flatbuffer"
 
 cargo run --release -- "$@"

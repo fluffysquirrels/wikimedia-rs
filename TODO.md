@@ -1,11 +1,27 @@
 # To do
 
-
 ## Must do before publishing
 
-* Document pre-requisites for build and run.
-    * docker
-    * pandoc
+* Document
+    * Pre-requisites for build and run.
+        * docker
+        * pandoc
+    * Platform
+    * Architecture
+    * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
+* import-dump
+    * do it all
+    * in parallel
+    * while downloading article dumps
+    * For later: daemon
+    * search indices in RocksDB or sqlite? LMDB?
+        * tantivy: https://lib.rs/crates/tantivy
+        * https://lib.rs/crates/sonic-server
+* Web server
+    * `/{dump}/page/by-id/{wikimedia_id}`, e.g. `/enwiki/page/by-id/30007` for "The Matrix"
+    * `/{dump}/page/by-title/{wikimedia_title}` e.g. `/enwiki/page/by-title/The_Matrix`
+    * `/{dump}/page/by-store-id/{store_page_id}` e.g. `/enwiki/page/by-store-id/1.2`
+
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -23,47 +39,23 @@
 
 * Tidy up args to `operations::download_job_file`
 * Validate dump name, job name to have no relative paths, path traversal.
-* Logging to JSON
-    * Document `bunyan` support with `bunyan-view`.
-* `bin/doc` script: `cargo doc --package wikimedia-downloader --package flatbuffers --document-private-items --no-deps --open`
-* import-dump
-    * do it all
-    * in parallel
-    * while downloading article dumps
-    * daemon
-    * search indices in RocksDB or sqlite? LMDB?
-        * tantivy: https://lib.rs/crates/tantivy
-        * https://lib.rs/crates/sonic-server
 * mod article_dump
     * More fields.
     * `<siteinfo>`
     * Performance
-* `get-dump-page`
 * Render with `pandoc`
     * Rewrite image links
     * Save lua filter to a file, reference it by path.
     * TODO: Sanitise HTML
-* Pipelining straight from download into target format.
-* Clean up temp files (left from failed downloads) on future runs
+* Clean up temp files on future runs
+    * Left from failed downloads
+    * Left from failed chunk writes to the store
 * Flatbuffers
     * capnproto vs flatbuffers
     * capnproto capabilities
-    * Read chunk as JSON using `flatc` in docker:
-```
-sudo docker run --rm \
-    -v ${PWD}/fbs:/fbs:ro \
-    -v ${PWD}/out:/out:ro \
-    neomantra/flatbuffers:latest \
-    sh -c '
-        set -e
-        cd /tmp
-        flatc --defaults-json --json --size-prefixed \
-            /fbs/wikimedia.fbs -- /out/articles.fbd
-        cat /tmp/articles.json
-    '
-```
 * Page Store
     * Locking
+    * Chunk list
     * Compression
         * LZ4
             * decompression multiple times faster than snappy
@@ -134,8 +126,25 @@ sudo docker run --rm \
 
 ## Might do
 
+* Look into other sites
+    * https://meta.wikimedia.org/wiki/Wikimedia_projects
+    * : wiktionary, meta.wikimedia, mediawiki docs, wikisource, wikibooks, wikiquote, wikimedia commons
+* https://wikitech.wikimedia.org/wiki/Main_Page
 * Wikimedia APIs
+    * https://meta.wikimedia.org/wiki/Research:Data
+    * https://wikitech.wikimedia.org/wiki/Portal:Data_Services
+    * https://wikitech.wikimedia.org/wiki/Help:Cloud_Services_introduction
+        * https://wikitech.wikimedia.org/wiki/Help:Toolforge/Kubernetes
+        * https://wikitech.wikimedia.org/wiki/Help:Toolforge/Database
+    * https://meta.wikimedia.org/wiki/Wikimedia_movement
+    * https://en.wikipedia.org/api/rest_v1/
+        * `curl --compressed 'https://en.wikipedia.org/api/rest_v1/page/html/The_Matrix'`
     * Look at https://github.com/magnusmanske/mediawiki_rust
+    * w/api.php
+        * https://www.mediawiki.org/wiki/API:Etiquette
+        * https://en.wikipedia.org/wiki/Special:ApiSandbox#action=query&format=rawfm&prop=info&titles=Albert%20Einstein&inprop=url%7Ctalkid
+        * https://en.wikipedia.org/wiki/Special:ApiSandbox#action=query&format=json&prop=info%7Cpageimages%7Cpageterms%7Crevisions&indexpageids=1&titles=The%20Matrix&callback=&formatversion=2&inprop=url%7Ctalkid&rvprop=ids%7Ctimestamp%7Cflags%7Ccomment%7Cuser&rvlimit=10
+        * `curl 'https://en.wikipedia.org/w/api.php?action=query&format=json&prop=info%7Cpageimages%7Cpageterms%7Crevisions&indexpageids=1&titles=The%20Matrix&callback=&formatversion=2&inprop=url%7Ctalkid&rvprop=ids%7Ctimestamp%7Cflags%7Ccomment%7Cuser&rvlimit=10' -v -H "Accept: application/json"`
     * EventStreams
         * https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams
         * https://docs.rs/eventstreams/latest/eventstreams/
@@ -149,6 +158,7 @@ sudo docker run --rm \
     * https://docs.rs/parse_wiki_text/latest/parse_wiki_text/
     * https://crates.io/crates/mediawiki_parser -- not as complete
     * https://www.mediawiki.org/wiki/Alternative_parsers
+* bin/build scripts for "release but with symbols"; "release but stripped and lto" -- might be useful, might not.
 * Consider: making `http::{download, metadata}_client()` return different tuple struct
   wrappers to avoid mixing the 2 up.
 * Cache metadata downloads
@@ -239,7 +249,7 @@ sudo docker run --rm \
             *  In some small number of files; either concatenated with
                an index file somewhere else, or in some seekable
                format  
-               (easier to read/write in parallel that just one big file)
+               (easier to read/write in parallel than just one big file)
             *  In some seekable format in one file
         * Store indexes by page ID and page title to the chunk ID / offsets,
           and an offset in the decompressed chunk
@@ -313,4 +323,18 @@ wmd get-page --article-dump-file out/articles.bz2 \
                 ') \
     > ~/tmp/page.html \
     && xdg-open ~/tmp/page.html
+```
+* Read chunk as JSON using `flatc` in docker:
+```
+sudo docker run --rm \
+    -v ${PWD}/fbs:/fbs:ro \
+    -v ${PWD}/out:/out:ro \
+    neomantra/flatbuffers:latest \
+    sh -c '
+        set -e
+        cd /tmp
+        flatc --defaults-json --json --size-prefixed \
+            /fbs/wikimedia.fbs -- /out/articles.fbd
+        cat /tmp/articles.json
+    '
 ```

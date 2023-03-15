@@ -19,17 +19,20 @@ pub struct Args {
     article_dump_file: PathBuf,
 
     /// How many pages to import.
-    #[arg(long, default_value_t = 100)]
-    count: usize,
+    #[arg(long)]
+    count: Option<usize>,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let pages = article_dump::open_article_dump_file(&*args.article_dump_file)?.take(args.count);
+    let pages = article_dump::open_article_dump_file(&*args.article_dump_file)?;
 
     let mut store = page_store::Options::from_common_args(&args.common).build_store()?;
 
-    store.import(pages)?;
+    match args.count {
+        None => store.import(pages)?,
+        Some(c) => store.import(pages.take(c))?,
+    };
 
     Ok(())
 }

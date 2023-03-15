@@ -52,11 +52,11 @@ pub struct VersionSpecArg {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct JobNameArg {
-    /// The name of the job to use, e.g. `metacurrentdumprecombine`.
+    /// The name of the job to use, e.g. `articlesdump`.
     ///
     /// If not present tries to read the environment variable `WMD_JOB`,
-    /// finally uses `metacurrentdumprecombine` as a default.
-    #[arg(id = "job", long = "job", default_value = "metacurrentdumprecombine", env = "WMD_JOB")]
+    /// finally uses `articlesdump` as a default.
+    #[arg(id = "job", long = "job", default_value = "articlesdump", env = "WMD_JOB")]
     pub value: String,
 }
 

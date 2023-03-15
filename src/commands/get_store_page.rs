@@ -12,9 +12,9 @@ pub struct Args {
     #[clap(flatten)]
     common: CommonArgs,
 
-    /// Which page index in the chunk to get.
+    /// The store page ID to get.
     #[arg(long)]
-    index: usize,
+    id: page_store::StorePageId,
 
     /// Choose an output type for the page: HTML or Json. HTML
     /// requires `pandoc` to be installed and on your path.
@@ -30,10 +30,9 @@ enum OutputType {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let mut store = page_store::Options::from_common_args(&args.common).build_store()?;
+    let store = page_store::Options::from_common_args(&args.common).build_store()?;
 
-    let chunk = store.map_chunk()?;
-    let page = chunk.get_page(args.index)?;
+    let page = store.get_page_by_store_id(args.id)?;
 
     match args.out {
         OutputType::Json => {
@@ -43,8 +42,8 @@ pub async fn main(args: Args) -> Result<()> {
         OutputType::Html => {
             let html = wikitext::convert_page_to_html(&args.common, &page).await?;
             std::io::stdout().write_all(&*html)?;
-        } // end of OutputType::Html
-    } // end of match on OutputType
+        }
+    }
 
     Ok(())
 }

@@ -1,4 +1,7 @@
-#![feature(async_closure)]
+#![feature(
+    async_closure,
+    closure_lifetime_binder,
+)]
 
 // This module is first to import its macro.
 #[macro_use]
@@ -11,6 +14,7 @@ mod fbs;
 mod http;
 mod operations;
 mod page_store;
+mod slug;
 mod temp_dir;
 mod types;
 mod user_regex;
@@ -21,9 +25,11 @@ use crate::{
     temp_dir::TempDir,
     user_regex::UserRegex,
 };
+
 use tracing::Level;
 
-type Result<T> = std::result::Result<T, anyhow::Error>;
+type Error = anyhow::Error;
+type Result<T> = std::result::Result<T, Error>;
 
 #[derive(clap::Parser, Clone, Debug)]
 struct Args {
@@ -39,6 +45,7 @@ struct Args {
 enum Command {
     Completion(commands::completion::Args),
     Download(commands::download::Args),
+    GetChunk(commands::get_chunk::Args),
     GetDump(commands::get_dump::Args),
     GetDumpPage(commands::get_dump_page::Args),
     GetFileInfo(commands::get_file_info::Args),
@@ -46,6 +53,7 @@ enum Command {
     GetStorePage(commands::get_store_page::Args),
     GetVersion(commands::get_version::Args),
     ImportDump(commands::import_dump::Args),
+    Web(commands::web::Args),
 }
 
 #[derive(Eq, PartialEq)]
@@ -69,6 +77,7 @@ async fn main() -> Result<()> {
     match args.command {
         Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
+        Command::GetChunk(cmd_args) => commands::get_chunk::main(cmd_args).await?,
         Command::GetDump(cmd_args) => commands::get_dump::main(cmd_args).await?,
         Command::GetDumpPage(cmd_args) => commands::get_dump_page::main(cmd_args).await?,
         Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
@@ -76,6 +85,7 @@ async fn main() -> Result<()> {
         Command::GetStorePage(cmd_args) => commands::get_store_page::main(cmd_args).await?,
         Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
         Command::ImportDump(cmd_args) => commands::import_dump::main(cmd_args).await?,
+        Command::Web(cmd_args) => commands::web::main(cmd_args).await?,
     };
 
     let duration = start_time.elapsed();

@@ -1,5 +1,8 @@
+use anyhow::format_err;
 use crate::{
     args::CommonArgs,
+    article_dump,
+    fbs::wikimedia as wm,
     page_store,
     Result,
     wikitext,
@@ -14,7 +17,10 @@ pub struct Args {
 
     /// The store page ID to get.
     #[arg(long)]
-    id: page_store::StorePageId,
+    store_page_id: Option<page_store::StorePageId>,
+
+    #[arg(long)]
+    chunk_id: Option<page_store::ChunkId>,
 
     /// Choose an output type for the page: HTML or Json. HTML
     /// requires `pandoc` to be installed and on your path.
@@ -25,6 +31,7 @@ pub struct Args {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum OutputType {
     Json,
+    JsonWithBody,
     Html,
 }
 
@@ -32,14 +39,62 @@ enum OutputType {
 pub async fn main(args: Args) -> Result<()> {
     let store = page_store::Options::from_common_args(&args.common).build_store()?;
 
-    let page = store.get_page_by_store_id(args.id)?;
+    match (args.store_page_id, args.chunk_id) {
+        (Some(_), Some(_)) => return Err(anyhow::Error::msg(
+            "you passed both --store-page-id and --chunk-id arguments, \
+             you must use only one of these.")),
+        (Some(store_page_id), None) => {
+            let page = store.get_page_by_store_id(store_page_id)?
+                            .ok_or_else(|| format_err!("page not found by id."))?;
+            output_page(&args, page.borrow()).await?;
+        },
+        (None, Some(chunk_id)) => {
+            check_output_type_not_html(args.out)?;
+            let chunk = store.get_mapped_chunk_by_chunk_id(chunk_id)?
+                             .ok_or_else(|| format_err!("chunk not found by id."))?;
+            for page in chunk.pages_iter() {
+                output_page(&args, page).await?;
+            }
+        },
+        (None, None) => {
+            check_output_type_not_html(args.out)?;
+            for chunk_id in store.chunk_id_iter() {
+                let chunk_id = chunk_id?;
+                tracing::debug!(%chunk_id, "Outputting pages from new chunk");
+                let chunk = store.get_mapped_chunk_by_chunk_id(chunk_id)?
+                                 .ok_or_else(|| format_err!("chunk not found by id."))?;
+                for page in chunk.pages_iter() {
+                    output_page(&args, page).await?;
+                }
+            }
+        },
+    } // End of match on input ID variants.
 
+    Ok(())
+}
+
+fn check_output_type_not_html(output_type: OutputType) -> Result<()> {
+    match output_type {
+        OutputType::Html => Err(anyhow::Error::msg(
+            "Cannot use --out Html if more than one page is returned.")),
+        _ => Ok(())
+    }
+}
+
+async fn output_page(args: &Args, page: wm::Page<'_>) -> Result<()> {
     match args.out {
         OutputType::Json => {
+            let page = page_store::convert_store_page_to_article_dump_page_without_body(&page)?;
+            serde_json::to_writer_pretty(&std::io::stdout(), &page)?;
+            println!();
+        },
+        OutputType::JsonWithBody => {
+            let page = article_dump::Page::try_from(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;
             println!();
         },
         OutputType::Html => {
+            let page = article_dump::Page::try_from(&page)?;
             let html = wikitext::convert_page_to_html(&args.common, &page).await?;
             std::io::stdout().write_all(&*html)?;
         }

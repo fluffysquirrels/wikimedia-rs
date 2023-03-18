@@ -2,6 +2,30 @@
 
 ## Must do before publishing
 
+* Lifetimes issues for `store.for_each_page()`
+    * https://rust-lang.github.io/rfcs/3216-closure-lifetime-binder.html
+    * `fn` pointers
+    * https://doc.rust-lang.org/reference/types/closure.html
+    * https://doc.rust-lang.org/reference/types/function-pointer.html
+    * https://doc.rust-lang.org/nomicon/hrtb.html
+    * Self referential structs
+    * Use MappedPage
+    * Rewrite for each page as an iterator?
+    * Cache open chunks and pages?
+* Split `page_store.rs`
+* Fork flatbuffers crate, add method `Vector::loc(&self)`?
+* Use anyhow macros: bail, format_err.
+* Split web server and cli tool?
+* web
+    * Links to local by wikimedia ID, by page store ID, by title at the top of for each page.
+    * HTML template
+    * Request log
+    * Optional: Tower middleware, like rate limiting, concurrency limits
+    * `/{dump}/page/by-id/{wikimedia_id}`, e.g. `/enwiki/page/by-id/30007` for "The Matrix"
+    * `/{dump}/page/by-title/{wikimedia_title}` e.g. `/enwiki/page/by-title/The_Matrix`
+    * `/{dump}/page/by-store-id/{store_page_id}` e.g. `/enwiki/page/by-store-id/1.2`
+    * Add compression for non-local hosts
+    * Handle multiple dumps
 * Document
     * Pre-requisites for build and run.
         * docker
@@ -17,10 +41,6 @@
     * search indices in RocksDB or sqlite? LMDB?
         * tantivy: https://lib.rs/crates/tantivy
         * https://lib.rs/crates/sonic-server
-* Web server
-    * `/{dump}/page/by-id/{wikimedia_id}`, e.g. `/enwiki/page/by-id/30007` for "The Matrix"
-    * `/{dump}/page/by-title/{wikimedia_title}` e.g. `/enwiki/page/by-title/The_Matrix`
-    * `/{dump}/page/by-store-id/{store_page_id}` e.g. `/enwiki/page/by-store-id/1.2`
 
 * Subcommand to run from cron.
     * Summary at the end.
@@ -53,9 +73,26 @@
 * Flatbuffers
     * capnproto vs flatbuffers
     * capnproto capabilities
+* Futures tidy up in web, get-store-page and page_store
+    * Try to use `left_future` and `right_future` instead of boxing
+    * Revisit removing async closures (in http and operations modules)
 * Page Store
     * Locking
+    * async
+    * Inspect chunks
+    * `for_each_chunk_page_by_chunk_id` is pretty smelly, couldn't get
+      an iterator to pass borrow checking.
+    * When to run verifier when mapping chunks? At the moment we run on every read.
     * Chunk list
+    * Race between writing a chunk and committing the sled index.
+        * Keep a chunks WIP tree in sled, insert chunk id,
+          flush_async, write the chunk to temp file, await the sled
+          flush, move the chunk to out dir, insert to sled index,
+          commit and flush.
+    * Support loading a Store.
+    * Chunk index in sled
+        * Tree::checksum() only returns a CRC32.
+        * Locking?
     * Compression
         * LZ4
             * decompression multiple times faster than snappy

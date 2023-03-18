@@ -1,3 +1,4 @@
+use anyhow::Context;
 use crate::Result;
 use hex::ToHex;
 use std::path::{Path, PathBuf};
@@ -52,7 +53,9 @@ impl TempDir {
         // Set self.cleaned_up = true whether or not the delete succeeds.
         self.cleaned_up = true;
         if !self.keep {
-            std::fs::remove_dir_all(&*self.path)?;
+            std::fs::remove_dir_all(&*self.path)
+                .with_context(|| format!("while cleaning up TempDir path='{path}'",
+                                         path = self.path.display()))?;
         }
         Ok(())
     }

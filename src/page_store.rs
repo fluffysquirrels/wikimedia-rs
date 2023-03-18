@@ -229,8 +229,6 @@ impl Store {
 
     fn import_inner(&mut self, pages: Box<dyn Iterator<Item = Result<article_dump::Page>>>
     ) -> Result<ImportResult> {
-        // TODO: This is dumb but OK for testing, do something smarter later.
-        self.clear()?;
 
         let start = Instant::now();
 

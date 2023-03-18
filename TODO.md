@@ -16,6 +16,9 @@
 * Fork flatbuffers crate, add method `Vector::loc(&self)`?
 * Use anyhow macros: bail, format_err.
 * Split web server and cli tool?
+* Dedicated clear-store command.
+* Restartable / idempotent import.
+* One shot download and import.
 * web
     * Links to local by wikimedia ID, by page store ID, by title at the top of for each page.
     * HTML template

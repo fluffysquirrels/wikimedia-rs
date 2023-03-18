@@ -18,7 +18,11 @@ pub struct Args {
     #[arg(long)]
     article_dump_file: PathBuf,
 
-    /// How many pages to import.
+    /// Clear existing data in the store before importing.
+    #[arg(long, default_value_t = false)]
+    clear: bool,
+
+    /// How many pages to import. No limit if omitted.
     #[arg(long)]
     count: Option<usize>,
 }
@@ -28,6 +32,10 @@ pub async fn main(args: Args) -> Result<()> {
     let pages = article_dump::open_article_dump_file(&*args.article_dump_file)?;
 
     let mut store = page_store::Options::from_common_args(&args.common).build_store()?;
+
+    if args.clear {
+        store.clear()?;
+    }
 
     match args.count {
         None => store.import(pages)?,

@@ -2,25 +2,22 @@
 
 ## Must do before publishing
 
-* Lifetimes issues for `store.for_each_page()`
-    * https://rust-lang.github.io/rfcs/3216-closure-lifetime-binder.html
-    * `fn` pointers
-    * https://doc.rust-lang.org/reference/types/closure.html
-    * https://doc.rust-lang.org/reference/types/function-pointer.html
-    * https://doc.rust-lang.org/nomicon/hrtb.html
-    * Self referential structs
-    * Use MappedPage
-    * Rewrite for each page as an iterator?
-    * Cache open chunks and pages?
+* Improve import
+    * Restartable / checkpointed / idempotent
+    * Load `next_chunk_id`
+    * Import whole articledump in one go
+    * Progress reporting, ETA
+    * One shot download and import.
+    * multistream? (doh!) -- add --offset to import-dump
+* No concurrent access to data with sled, could write a service API or add import to web?
 * Split `page_store.rs`
 * Fork flatbuffers crate, add method `Vector::loc(&self)`?
 * Use anyhow macros: bail, format_err.
 * Split web server and cli tool?
 * Dedicated clear-store command.
-* Restartable / idempotent import.
-* One shot download and import.
 * web
-    * Links to local by wikimedia ID, by page store ID, by title at the top of for each page.
+    * Browsable
+    * Don't show error details to non-local hosts
     * HTML template
     * Request log
     * Optional: Tower middleware, like rate limiting, concurrency limits

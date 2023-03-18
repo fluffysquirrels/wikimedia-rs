@@ -3,7 +3,7 @@ use crate::{
     args::CommonArgs,
     article_dump,
     fbs::wikimedia as wm,
-    page_store,
+    page_store::self,
     Result,
     wikitext,
 };
@@ -58,9 +58,12 @@ pub async fn main(args: Args) -> Result<()> {
         },
         (None, None) => {
             check_output_type_not_html(args.out)?;
-            for chunk_id in store.chunk_id_iter() {
-                let chunk_id = chunk_id?;
-                tracing::debug!(%chunk_id, "Outputting pages from new chunk");
+            let mut chunk_ids = store.chunk_id_iter()
+                                     .try_collect::<Vec<page_store::ChunkId>>()?;
+            chunk_ids.sort();
+
+            for chunk_id in chunk_ids.into_iter() {
+                tracing::debug!(?chunk_id, "Outputting pages from new chunk");
                 let chunk = store.get_mapped_chunk_by_chunk_id(chunk_id)?
                                  .ok_or_else(|| format_err!("chunk not found by id."))?;
                 for page in chunk.pages_iter() {

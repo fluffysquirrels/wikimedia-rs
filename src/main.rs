@@ -1,6 +1,7 @@
 #![feature(
     async_closure,
-    closure_lifetime_binder,
+    iterator_try_collect,
+    iterator_try_reduce,
 )]
 
 // This module is first to import its macro.
@@ -43,6 +44,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Clone, Debug)]
 enum Command {
+    Clear(commands::clear::Args),
     Completion(commands::completion::Args),
     Download(commands::download::Args),
     GetChunk(commands::get_chunk::Args),
@@ -75,6 +77,7 @@ async fn main() -> Result<()> {
     }
 
     match args.command {
+        Command::Clear(cmd_args) => commands::clear::main(cmd_args).await?,
         Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
         Command::GetChunk(cmd_args) => commands::get_chunk::main(cmd_args).await?,

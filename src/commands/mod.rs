@@ -1,3 +1,4 @@
+pub mod clear;
 pub mod completion;
 pub mod download;
 pub mod get_chunk;

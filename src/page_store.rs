@@ -9,8 +9,9 @@ use crate::{
 use flatbuffers::{self as fb, FlatBufferBuilder, WIPOffset};
 use serde::Serialize;
 use std::{
+    cmp,
     convert::TryFrom,
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     io::Write,
     ops::Deref,
     path::PathBuf,
@@ -18,6 +19,7 @@ use std::{
     str::FromStr,
     time::{Duration, Instant},
 };
+use tracing::Level;
 
 macro_rules! try2 {
     ($expr:expr $(,)?) => {
@@ -39,7 +41,7 @@ pub struct Options {
 }
 
 pub struct Store {
-    next_chunk_id: u64,
+    next_chunk_id: ChunkId,
     opts: Options,
     sled_db: sled::Db,
     temp_dir: TempDir,
@@ -51,7 +53,7 @@ pub struct StorePageId {
     page_chunk_idx: PageChunkIndex,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ChunkId(u64);
 
 #[derive(Clone, Copy, Debug)]
@@ -96,10 +98,19 @@ impl FromStr for ChunkId {
     }
 }
 
+impl Debug for ChunkId {
+    fn fmt(&self,
+           f: &mut fmt::Formatter
+    ) -> StdResult<(), fmt::Error> {
+        let ChunkId(chunk_id) = self;
+        write!(f, "ChunkId(dec = {chunk_id}, hex = {chunk_id:#x})")
+    }
+}
+
 impl Display for ChunkId {
     fn fmt(&self,
            f: &mut fmt::Formatter
-    ) -> std::result::Result<(), fmt::Error> {
+    ) -> StdResult<(), fmt::Error> {
         let ChunkId(chunk_id) = self;
         write!(f, "{chunk_id}")
     }
@@ -108,7 +119,7 @@ impl Display for ChunkId {
 impl Display for PageChunkIndex {
     fn fmt(&self,
            f: &mut fmt::Formatter
-    ) -> std::result::Result<(), fmt::Error> {
+    ) -> StdResult<(), fmt::Error> {
         let PageChunkIndex(idx) = self;
         write!(f, "{idx}")
     }
@@ -134,7 +145,7 @@ impl FromStr for StorePageId {
 impl Display for StorePageId {
     fn fmt(&self,
            f: &mut fmt::Formatter
-    ) -> std::result::Result<(), fmt::Error> {
+    ) -> StdResult<(), fmt::Error> {
         let StorePageId { chunk_id, page_chunk_idx } = self;
         write!(f, "{chunk_id}.{page_chunk_idx}")
     }
@@ -187,8 +198,34 @@ impl Store {
                                    .path(opts.path.join("sled_db"))
                                    .open()?;
 
+        let max_existing_chunk_id: Result<Option<Result<ChunkId>>> =
+            Self::chunk_id_iter_from_opts(&opts)
+                 .try_reduce(|id1: Result<ChunkId>, id2: Result<ChunkId>|
+                             -> Result<Result<ChunkId>> {
+                                 Ok(Ok(cmp::max(id1?, id2?)))
+                             });
+        let next_chunk_id = match max_existing_chunk_id? {
+            Some(res) => ChunkId(res?.0 + 1),
+            None => ChunkId(0),
+        };
+
+        if tracing::enabled!(Level::DEBUG) {
+            let tree_names = sled_db.tree_names()
+                                    .into_iter()
+                                    .map(|bytes| -> String {
+                                         String::from_utf8_lossy(&*bytes).into_owned()
+                                    })
+                                    .collect::<Vec<String>>();
+
+            tracing::debug!(%next_chunk_id,
+                            sled_db.trees = ?tree_names,
+                            sled_db.size_on_disk = sled_db.size_on_disk()?,
+                            sled_db.was_recovered = sled_db.was_recovered(),
+                            "Store::new() loaded");
+        }
+
         Ok(Store {
-            next_chunk_id: 0,
+            next_chunk_id,
             sled_db,
             temp_dir: TempDir::create(&*opts.path, /* keep: */ false)?,
 
@@ -395,10 +432,18 @@ impl Store {
     }
 
     pub fn chunk_id_iter(&self) -> impl Iterator<Item = Result<ChunkId>> {
+        Self::chunk_id_iter_from_opts(&self.opts)
+    }
+
+    fn chunk_id_iter_from_opts(opts: &Options) -> impl Iterator<Item = Result<ChunkId>> {
         // TODO: Use chunks metadata in sled.
+
+        // This closure is to specify the return type explicitly.
+        // Without this the return type is inferred from the first return
+        // and doesn't include the `dyn`, so the subsequent ones fail to type check.
         (|| -> Box<dyn Iterator<Item = Result<ChunkId>>> {
-            let dir = self.chunks_path();
-            let read_dir = match std::fs::read_dir(dir) {
+            let chunks_path = Self::chunks_path_from_opts(opts);
+            let read_dir = match std::fs::read_dir(chunks_path) {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound =>
                     return Box::new(std::iter::empty()),
                 Err(e) => return Box::new(std::iter::once(Err(e.into()))),
@@ -453,20 +498,30 @@ impl Store {
         };
 
         let chunk = MappedChunk {
-            path: path,
+            path: path.clone(),
             mmap,
         };
 
         let bytes = chunk.bytes();
 
-        // Runs verifier, subsequent loads will not.
-        let _chunk_fb = wm::size_prefixed_root_as_chunk(bytes)?;
+        // This load runs the flatbuffers verifier, subsequent loads will not.
+        let _chunk_fb =
+            tracing::trace_span!("Store::map_chunk() running verifier.",
+                                 chunk_id = ?chunk_id,
+                                 path = %path.display())
+                  .in_scope(|| {
+                    wm::size_prefixed_root_as_chunk(bytes)
+                })?;
 
         Ok(Some(chunk))
     }
 
     fn chunks_path(&self) -> PathBuf {
-        self.opts.path.join("chunks")
+        Self::chunks_path_from_opts(&self.opts)
+    }
+
+    fn chunks_path_from_opts(opts: &Options) -> PathBuf {
+        opts.path.join("chunks")
     }
 
     fn chunk_path(&self, chunk_id: ChunkId) -> PathBuf {
@@ -475,8 +530,8 @@ impl Store {
 
     fn next_chunk_id(&mut self) -> ChunkId {
         let next = self.next_chunk_id;
-        self.next_chunk_id += 1;
-        ChunkId(next)
+        self.next_chunk_id.0 += 1;
+        next
     }
 
     fn get_tree_store_page_id_by_slug(&self) -> Result<sled::Tree> {

@@ -12,17 +12,12 @@ pub struct Args {
 
     #[arg(long)]
     chunk_id: Option<page_store::ChunkId>,
-
-    #[arg(long)]
-    with_page_id: bool,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
     let store = page_store::Options::from_common_args(&args.common).build_store()?;
 
-    // One of `single` or `all` will be Some(impl Iterator<Item = Result<ChunkId>>),
-    // then `both` will iterator over the items from the correct one.k
     let mut chunk_ids: Vec<page_store::ChunkId> = Vec::new();
     match args.chunk_id {
         Some(chunk_id) => chunk_ids.push(chunk_id),

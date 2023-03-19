@@ -193,19 +193,47 @@ impl Options {
 }
 
 impl Store {
+    /// Open an existing store or create a new one.
     pub fn new(opts: Options) -> Result<Store> {
-        let sled_db = sled::Config::default()
-                                   .path(opts.path.join("sled_db"))
-                                   .open()?;
+        let sled_path = opts.path.join("sled_db");
+        let sled_db =
+            tracing::debug_span!("Store::new() opening sled_db",
+                                 sled_path = %sled_path.display())
+                .in_scope(||
+                          sled::Config::default()
+                              .path(sled_path)
+//                              .print_profile_on_drop(true)
+                              .open())?;
 
-        let max_existing_chunk_id: Result<Option<Result<ChunkId>>> =
+        let chunk_iter_span = tracing::trace_span!("Store::new() enumerating existing chunks.",
+                                                   chunk_count = tracing::field::Empty,
+                                                   max_existing_chunk_id = tracing::field::Empty)
+                                      .entered();
+        struct ChunkStats {
+            count: usize,
+            max_id: Option<ChunkId>,
+        }
+        let chunk_stats: ChunkStats =
             Self::chunk_id_iter_from_opts(&opts)
-                 .try_reduce(|id1: Result<ChunkId>, id2: Result<ChunkId>|
-                             -> Result<Result<ChunkId>> {
-                                 Ok(Ok(cmp::max(id1?, id2?)))
-                             });
-        let next_chunk_id = match max_existing_chunk_id? {
-            Some(res) => ChunkId(res?.0 + 1),
+                .try_fold(ChunkStats { count: 0, max_id: None }, // inital state
+                          |s: ChunkStats, next: Result<ChunkId>|
+                          -> Result<ChunkStats> {
+                              let next = next?;
+                              Ok(ChunkStats {
+                                  count: s.count + 1,
+                                  max_id: match s.max_id {
+                                      None => Some(next),
+                                      Some(prev) => Some(cmp::max(prev, next)),
+                                  }
+                              })
+                          })?;
+        chunk_iter_span.record("chunk_count", chunk_stats.count);
+        chunk_iter_span.record("max_existing_chunk_id",
+                               tracing::field::debug(chunk_stats.max_id));
+        let _ = chunk_iter_span.exit();
+
+        let next_chunk_id = match chunk_stats.max_id {
+            Some(ChunkId(id)) => ChunkId(id + 1),
             None => ChunkId(0),
         };
 
@@ -509,7 +537,7 @@ impl Store {
             tracing::trace_span!("Store::map_chunk() running verifier.",
                                  chunk_id = ?chunk_id,
                                  path = %path.display())
-                  .in_scope(|| {
+                .in_scope(|| {
                     wm::size_prefixed_root_as_chunk(bytes)
                 })?;
 

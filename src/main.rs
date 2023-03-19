@@ -14,11 +14,12 @@ mod commands;
 mod fbs;
 mod http;
 mod operations;
-mod page_store;
 mod slug;
+mod store;
 mod temp_dir;
 mod types;
 mod user_regex;
+mod util;
 mod wikitext;
 
 use clap::Parser;
@@ -44,7 +45,7 @@ struct Args {
 
 #[derive(clap::Subcommand, Clone, Debug)]
 enum Command {
-    Clear(commands::clear::Args),
+    ClearStore(commands::clear_store::Args),
     Completion(commands::completion::Args),
     Download(commands::download::Args),
     GetChunk(commands::get_chunk::Args),
@@ -77,7 +78,7 @@ async fn main() -> Result<()> {
     }
 
     match args.command {
-        Command::Clear(cmd_args) => commands::clear::main(cmd_args).await?,
+        Command::ClearStore(cmd_args) => commands::clear_store::main(cmd_args).await?,
         Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
         Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
         Command::GetChunk(cmd_args) => commands::get_chunk::main(cmd_args).await?,

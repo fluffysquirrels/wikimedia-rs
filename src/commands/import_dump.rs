@@ -1,46 +1,60 @@
 use crate::{
-    args::CommonArgs,
+    args::{CommonArgs, DumpNameArg, JobNameArg, VersionArg},
     article_dump,
-    // fbs::wikimedia as fbs,
-    page_store,
+    store,
     Result,
+    util::IteratorExt,
 };
 use std::{
     path::PathBuf,
 };
 
-/// Import pages from an article dump file into our pages store.
+/// Import pages from an article dump into our store.
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
     #[clap(flatten)]
     common: CommonArgs,
 
+    #[clap(flatten)]
+    dump_name: DumpNameArg,
+
+    #[clap(flatten)]
+    version: VersionArg,
+
+    #[clap(flatten)]
+    job_name: JobNameArg,
+
     #[arg(long)]
-    article_dump_file: PathBuf,
+    article_dump_file: Option<PathBuf>,
 
     /// Clear existing data in the store before importing.
     #[arg(long, default_value_t = false)]
     clear: bool,
 
-    /// How many pages to import. No limit if omitted.
+    /// Maximum count of pages to import. No limit if omitted.
     #[arg(long)]
     count: Option<usize>,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let pages = article_dump::open_article_dump_file(&*args.article_dump_file)?;
+    let pages = match args.article_dump_file {
+        Some(path) => article_dump::open_article_dump_file(&*path)?.boxed(),
+        None => article_dump::open_article_dump_job(
+            &*args.common.out_dir, &args.dump_name, &args.version.value, &args.job_name)?.boxed(),
+    };
 
-    let mut store = page_store::Options::from_common_args(&args.common).build_store()?;
+    let pages = match args.count {
+        None => pages,
+        Some(count) => pages.take(count).boxed(),
+    };
 
+    let mut store = store::Options::from_common_args(&args.common).build_store()?;
     if args.clear {
         store.clear()?;
     }
 
-    match args.count {
-        None => store.import(pages)?,
-        Some(c) => store.import(pages.take(c))?,
-    };
+    store.import(pages)?;
 
     Ok(())
 }

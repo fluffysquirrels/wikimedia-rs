@@ -3,7 +3,7 @@ use crate::{
     args::CommonArgs,
     article_dump,
     fbs::wikimedia as wm,
-    page_store::self,
+    store::self,
     Result,
     wikitext,
 };
@@ -17,10 +17,10 @@ pub struct Args {
 
     /// The store page ID to get.
     #[arg(long)]
-    store_page_id: Option<page_store::StorePageId>,
+    store_page_id: Option<store::StorePageId>,
 
     #[arg(long)]
-    chunk_id: Option<page_store::ChunkId>,
+    chunk_id: Option<store::ChunkId>,
 
     /// Choose an output type for the page: HTML or Json. HTML
     /// requires `pandoc` to be installed and on your path.
@@ -37,7 +37,7 @@ enum OutputType {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = page_store::Options::from_common_args(&args.common).build_store()?;
+    let store = store::Options::from_common_args(&args.common).build_store()?;
 
     match (args.store_page_id, args.chunk_id) {
         (Some(_), Some(_)) => return Err(anyhow::Error::msg(
@@ -59,7 +59,7 @@ pub async fn main(args: Args) -> Result<()> {
         (None, None) => {
             check_output_type_not_html(args.out)?;
             let mut chunk_ids = store.chunk_id_iter()
-                                     .try_collect::<Vec<page_store::ChunkId>>()?;
+                                     .try_collect::<Vec<store::ChunkId>>()?;
             chunk_ids.sort();
 
             for chunk_id in chunk_ids.into_iter() {
@@ -87,7 +87,7 @@ fn check_output_type_not_html(output_type: OutputType) -> Result<()> {
 async fn output_page(args: &Args, page: wm::Page<'_>) -> Result<()> {
     match args.out {
         OutputType::Json => {
-            let page = page_store::convert_store_page_to_article_dump_page_without_body(&page)?;
+            let page = store::convert_store_page_to_article_dump_page_without_body(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;
             println!();
         },

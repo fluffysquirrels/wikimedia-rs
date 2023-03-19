@@ -3,6 +3,7 @@
 use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
+    article_dump,
     http,
     Result,
     TempDir,
@@ -238,12 +239,8 @@ pub async fn download_job_file(
                 mirror_url = mirror_url,
                 file_rel_url = file_meta.url);
 
-    let file_name = file_meta.url.split('/').last()
-        .expect("already verified segments is not empty");
-    let file_out_path = out_dir.join(format!("{dump_name}/{ver}/{job_name}/{file_name}",
-                                             dump_name = &*dump_name.value,
-                                             ver = ver.0,
-                                             job_name = &*job_name.value));
+    let file_out_path = article_dump::job_file_path(out_dir, dump_name, ver, job_name, file_meta)?;
+    let file_name = file_out_path.file_name().expect("non-empty file name");
 
     match check_existing_file(&*file_out_path, file_meta, &*url).await? {
         ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck
@@ -255,7 +252,6 @@ pub async fn download_job_file(
     };
 
     let file_out_dir_path = file_out_path.parent().expect("file_out_path.parent() not None");
-
     let temp_file_path = temp_dir.path()?.join(&*file_name);
 
     std::fs::create_dir_all(&*file_out_dir_path)?;

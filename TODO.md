@@ -2,46 +2,77 @@
 
 ## Must do before publishing
 
+* Images
+* Title search
+* wiktext to HTML: remove active content
+* Switch to capnproto
+
+### Features
+* Categories
+    * Parse wikitext for category links e.g. `[[Category:1999 films]]`
+    * Might add field `categories: Vec<CategoryId>` to `article_dump::Page`.
+    * Add index `by_category_id`
+        * Key `(category_id,page_id)`
+        * Value: `(page_title)` or `()`  
+          `page_title` would need invalidating if pages get renamed.
+    * web  
+      [by-id](http://localhost:8089/enwiki/page/by-id/55814850)  
+      [example](http://localhost:8089/enwiki/page/by-title/Category:The_Matrix_(franchise)_films)
+        * Category page shows output from index where key = `[(category_id,0),(category_id + 1,0))`
+* Some way to handle multiple stores when we are importing a new version
+    * Could be as simple as writing new store to
+      `enwiki/{next_version}/store`, then restarting web pointing at
+      the new store when it's done
+* Handle multiple dumps (i.e. other wikimedia sites) / versions
+    * Separate stores per (dump,version)?
 * Improve import
     * Restartable / checkpointed / idempotent
-    * Load `next_chunk_id`
-    * Import whole articledump in one go
     * Progress reporting, ETA
-    * One shot download and import.
-    * multistream? (doh!) -- add --offset to import-dump
+    * One shot download and import, option to keep raw dumps or only
+      have one on disk during import.
+    * Import while web app is running
+    * In parallel
+    * daemon or cronjob
+* Dream lazy import:
+    * Start the web app, immediately be able to browse by page ID
+      using multistream dumps and data file HTTP range requests
+    * Index multistream indexes in the background (~ 1 minute)
+    * Can now browse or search by page title
+    * Start downloading and indexing data files, filling full text
+      search, by category indexes. Partial results for category
+      listing and FTS might be available during indexing with a
+      warning notice that they are incomplete.
+    * Finish indexing, all data is available, no warning.
+* Read wikimedia multistream dumps
+    * get-dump-page has `--offset`
+    * get-multistream-* commands
+        * Read index files to
+          `(index_file_name,
+            data_file_name,
+            data_stream_offset,
+            possibly data_stream_len,
+            page_id,
+            page_title)`
+        * Index this in something searchable by `page_id`, `page_title`
+        * Lookup page in multistream data file by page_id.
+* get-dump-page subcommand has raw xml output option.
+* Images
+    * Look at:
+        * https://dumps.wikimedia.org/index.json
+        * https://dumps.wikimedia.org/other/wikibase/commonswiki/
+        * https://meta.wikimedia.org/wiki/Data_dumps
+        * https://meta.wikimedia.org/wiki/Category:Data_dumps
+        * imagetable
+        * imagelinkstable
 * No concurrent access to data with sled, could write a service API or add import to web?
-* Split `page_store.rs`
-* Fork flatbuffers crate, add method `Vector::loc(&self)`?
-* Use anyhow macros: bail, format_err.
-* Split web server and cli tool?
-* Dedicated clear-store command.
 * web
     * Browsable
     * Don't show error details to non-local hosts
     * HTML template
     * Request log
     * Optional: Tower middleware, like rate limiting, concurrency limits
-    * `/{dump}/page/by-id/{wikimedia_id}`, e.g. `/enwiki/page/by-id/30007` for "The Matrix"
-    * `/{dump}/page/by-title/{wikimedia_title}` e.g. `/enwiki/page/by-title/The_Matrix`
-    * `/{dump}/page/by-store-id/{store_page_id}` e.g. `/enwiki/page/by-store-id/1.2`
-    * Add compression for non-local hosts
-    * Handle multiple dumps
-* Document
-    * Pre-requisites for build and run.
-        * docker
-        * pandoc
-    * Platform
-    * Architecture
-    * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
-* import-dump
-    * do it all
-    * in parallel
-    * while downloading article dumps
-    * For later: daemon
-    * search indices in RocksDB or sqlite? LMDB?
-        * tantivy: https://lib.rs/crates/tantivy
-        * https://lib.rs/crates/sonic-server
-
+    * Add compression for non-local hosts?
+    * TLS? Or instructions to set up a reverse proxy.
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -56,32 +87,17 @@
            return a custom `Error` struct with an `kind: ErrorKind` field.
         *  Downloads fail. Retry automatically after a short delay or next
            time the cronjob runs.
-
-* Tidy up args to `operations::download_job_file`
-* Validate dump name, job name to have no relative paths, path traversal.
-* mod article_dump
-    * More fields.
-    * `<siteinfo>`
-    * Performance
 * Render with `pandoc`
     * Rewrite image links
-    * Save lua filter to a file, reference it by path.
     * TODO: Sanitise HTML
 * Clean up temp files on future runs
     * Left from failed downloads
     * Left from failed chunk writes to the store
-* Flatbuffers
-    * capnproto vs flatbuffers
-    * capnproto capabilities
-* Futures tidy up in web, get-store-page and page_store
-    * Try to use `left_future` and `right_future` instead of boxing
-    * Revisit removing async closures (in http and operations modules)
-* Page Store
-    * Locking
+* Store
+    * Locking (explicit or just document that sled does it)
     * async
+    * Switch page chunks to capnproto?
     * Inspect chunks
-    * `for_each_chunk_page_by_chunk_id` is pretty smelly, couldn't get
-      an iterator to pass borrow checking.
     * When to run verifier when mapping chunks? At the moment we run on every read.
     * Chunk list
     * Race between writing a chunk and committing the sled index.
@@ -89,80 +105,41 @@
           flush_async, write the chunk to temp file, await the sled
           flush, move the chunk to out dir, insert to sled index,
           commit and flush.
-    * Support loading a Store.
-    * Chunk index in sled
-        * Tree::checksum() only returns a CRC32.
-        * Locking?
-    * Compression
-        * LZ4
-            * decompression multiple times faster than snappy
-            * https://github.com/PSeitz/lz4_flex faster than lz4_fear, optionally unsafe
-            * `lz4_fear`: use master branch, has a bugfix.  
-              https://github.com/main--/rust-lz-fear  
-              https://docs.rs/lz-fear/latest/lz_fear/
-                * LZ4-HC not supported
-            * https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md
-            * Pre-trained dictionary compression
-            * snappy vs lz4: https://stackoverflow.com/a/67537112/94819
-            * C lib: https://lz4.github.io/lz4/
-        * snappy
-            * https://docs.rs/snap/latest/snap/
-            * https://github.com/google/snappy/blob/main/framing_format.txt
-        * zstd
-            * pure rust decompressor: https://github.com/KillingSpark/zstd-rs  
-              3.5x slower than original C++ implementation
-            * rust bindings for C++ lib: https://crates.io/crates/zstd
-        * lzo
-            * https://crates.io/crates/rust-lzo
-            * some bindings
-* Stores
-    * RocksDB
-    * https://crates.io/crates/marble
-* Save default out path on first use to config file.
-* Full text search
-    * List of engines: https://gist.github.com/manigandham/58320ddb24fed654b57b4ba22aceae25
-    * Rust
-        * https://docs.rs/tantivy/latest/tantivy/
-            * https://docs.rs/summavy/latest/summavy/index.html
-        * https://github.com/quickwit-oss/quickwit
-        * https://github.com/mosuka/bayard
-        * https://github.com/toshi-search/Toshi
-        * https://github.com/valeriansaliou/sonic
-    * Manticore Search: https://github.com/manticoresoftware/manticoresearch
-        * C++
-        * https://github.com/manticoresoftware/manticoresearch/blob/master/doc/internals-index-format.md
-        * https://manual.manticoresearch.com/Creating_a_table/Data_types#Row-wise-and-columnar-attribute-storages
-        * https://github.com/manticoresoftware/columnar
-        * https://manticoresearch.com/blog/manticore-alternative-to-elasticsearch/
-            * Manticore parallelises queries automatically to a single shard, ES does not.
-            * Lower write latency
-            * Ingestion is 2x faster
-            * Starts up faster
-    * MySQL
-    * Postgres
-    * sqlite
-    * http://www.sphinxsearch.co/
-    * Solr
-    * https://stackoverflow.com/questions/1284083/choosing-a-stand-alone-full-text-search-server-sphinx-or-solr/1297561#1297561
-    * OpenSearch / ElasticSearch
-    * ClickHouse
-    * https://github.com/typesense/typesense
-    * Datasets
-        * https://archive.org/details/stackexchange
-            * https://meta.stackexchange.com/questions/2677/database-schema-documentation-for-the-public-data-dump-and-sede
-        * https://zenodo.org/record/45901
-        * https://github.com/HackerNews/API
-        * bigquery datasets https://cloud.google.com/bigquery/public-data
-        * https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=samples&page=dataset
-        * https://aws.amazon.com/opendata/?wwps-cards.sort-by=item.additionalFields.sortDate&wwps-cards.sort-order=desc
-        * https://aws.amazon.com/marketplace/pp/prodview-zxtb4t54iqjmy?sr=0-1&ref_=beagle&applicationId=AWSMPContessa
-        * https://commoncrawl.org/
-        * https://skeptric.com/common-crawl-index-athena/
-        * https://github.com/awslabs/open-data-registry/tree/main/datasets
-        * https://registry.opendata.aws/
+    * Try compression for chunks: LZ4 with https://github.com/PSeitz/lz4_flex  
+      1000 MB/s decompression or something similarly ridiculous
+* On first use prompt for default out path and save it to a config file
+
+### Documentation
+* Item documentation
+* Pre-requisites for build and run.
+    * docker
+    * pandoc
+* Platforms tested
+* Architecture
+* Logging to JSON, reading with `node-bunyan` or `bunyan-view`
+
+### Code quality
+* Rename directory `_page_store` to `store`
+* Put downloaded files under `dumps`, remove `_` prefix from directories
+* Split `store.rs`
+* Fork flatbuffers crate, add method `Vector::loc(&self)`?
+    * Upstream?
+* Tidy up args to `operations::download_job_file`
+* Validate dump name, job name to have no relative paths, path traversal.
+* mod article_dump
+    * More fields.
+    * `<siteinfo>`
+    * Performance
+* Futures tidy up in web, get-store-page and store
+    * Try to use `left_future` and `right_future` instead of boxing
+    * Revisit removing async closures (in http and operations modules)
+* Use anyhow macros: bail, format_err.
+* Split web server and cli tool?
+* Check page hashes in dump files
 
 ## Might do
 
+* Switch to capnproto for page chunk storage
 * Look into other sites
     * https://meta.wikimedia.org/wiki/Wikimedia_projects
     * : wiktionary, meta.wikimedia, mediawiki docs, wikisource, wikibooks, wikiquote, wikimedia commons
@@ -213,6 +190,9 @@
 * Tidy up logging and error handling with some more spans / instrument use / closures
     * E.g. repetition in http module.
 * Document shell completion script setup.
+```
+bin/generate-completions && exec zsh
+```
 * Add brief syntax hints for `--file-name-regex`.
 * Improve downloads
     * Set download rate limit
@@ -303,6 +283,12 @@
 
 ## Notes
 
+* Hacky import a whole dump:
+```
+wmd clear-store && \
+    ls -v out/job/*articles*.xml*.bz2 \
+    | xargs -n1 -I% -t wmd import-dump --article-dump-file %
+```
 * Cache metadata downloads
     * Save to `./out/cache`
     * Existing libraries
@@ -375,3 +361,108 @@ sudo docker run --rm \
         cat /tmp/articles.json
     '
 ```
+* bzip2 notes
+    * https://github.com/dsnet/compress/blob/master/doc/bzip2-format.pdf
+    * https://en.wikipedia.org/wiki/Bzip2
+    * https://www.kurokatta.org/grumble/2021/03/splittable-bzip2
+    * https://github.com/ruanhuabin/pbzip2
+* bitreader  
+  Could be used for scanning for bzip2 magic
+    * https://docs.rs/bitreader/
+    * https://docs.rs/bitstream-io/
+    * https://docs.rs/bitvec/
+* Multistream snippets
+    * Parse multistream index file names  
+```
+cd ~/wmd/out; ls -v job-multistream/*index*.txt* \
+    | sed --regexp-extended --expression 's/.*multistream-index([0-9]+).txt-p([0-9]+)p([0-9]+)\.bz2/\1,\2,\3,\0/'
+```
+    * Scan indices for title
+```
+cd ~/wmd/out/job-multistream
+ls -v *index*.txt*.bz2 \
+    | xargs -n1 -I % sh -c 'bzcat % | sed --unbuffered --expression "s/^/%:/"' \
+    | egrep --line-buffered 'The Matrix'
+```
+    * Read starting at substream, seek to ID 30007
+```
+cd ~/wmd/out/job-multistream;
+tail -c +$(( 174186181 + 1 )) \
+    enwiki-20230301-pages-articles-multistream1.xml-p1p41242.bz2 \
+    | bzcat \
+    | less +/30007
+```
+    * Extract stream offsets from multistream index  
+      `bzcat ~/wmd/out/job-multistream/index.bz2 | cut -d: -f1 | uniq`
+* Stores
+    * RocksDB
+    * lmdb
+    * https://crates.io/crates/jammdb lmdb port to Rust
+    * No: bonsaidb https://github.com/khonsulabs/bonsaidb
+    * sled
+    * https://crates.io/crates/marble
+* Full text search
+    * List of engines: https://gist.github.com/manigandham/58320ddb24fed654b57b4ba22aceae25
+    * Rust
+        * https://docs.rs/tantivy/latest/tantivy/
+            * https://docs.rs/summavy/latest/summavy/index.html
+        * https://lib.rs/crates/sonic-server
+        * https://github.com/quickwit-oss/quickwit
+        * https://github.com/mosuka/bayard
+        * https://github.com/toshi-search/Toshi
+        * https://github.com/valeriansaliou/sonic
+    * Manticore Search: https://github.com/manticoresoftware/manticoresearch
+        * C++
+        * https://github.com/manticoresoftware/manticoresearch/blob/master/doc/internals-index-format.md
+        * https://manual.manticoresearch.com/Creating_a_table/Data_types#Row-wise-and-columnar-attribute-storages
+        * https://github.com/manticoresoftware/columnar
+        * https://manticoresearch.com/blog/manticore-alternative-to-elasticsearch/
+            * Manticore parallelises queries automatically to a single shard, ES does not.
+            * Lower write latency
+            * Ingestion is 2x faster
+            * Starts up faster
+    * MySQL
+    * Postgres
+    * sqlite
+    * http://www.sphinxsearch.co/
+    * Solr
+    * https://stackoverflow.com/questions/1284083/choosing-a-stand-alone-full-text-search-server-sphinx-or-solr/1297561#1297561
+    * OpenSearch / ElasticSearch
+    * ClickHouse
+    * https://github.com/typesense/typesense
+    * Datasets
+        * https://archive.org/details/stackexchange
+            * https://meta.stackexchange.com/questions/2677/database-schema-documentation-for-the-public-data-dump-and-sede
+        * https://zenodo.org/record/45901
+        * https://github.com/HackerNews/API
+        * bigquery datasets https://cloud.google.com/bigquery/public-data
+        * https://console.cloud.google.com/bigquery?p=bigquery-public-data&d=samples&page=dataset
+        * https://aws.amazon.com/opendata/?wwps-cards.sort-by=item.additionalFields.sortDate&wwps-cards.sort-order=desc
+        * https://aws.amazon.com/marketplace/pp/prodview-zxtb4t54iqjmy?sr=0-1&ref_=beagle&applicationId=AWSMPContessa
+        * https://commoncrawl.org/
+        * https://skeptric.com/common-crawl-index-athena/
+        * https://github.com/awslabs/open-data-registry/tree/main/datasets
+        * https://registry.opendata.aws/
+
+* Compression for chunks
+    * LZ4
+        * decompression multiple times faster than snappy
+        * https://github.com/PSeitz/lz4_flex faster than lz4_fear, optionally unsafe
+        * `lz4_fear`: use master branch, has a bugfix.  
+          https://github.com/main--/rust-lz-fear  
+          https://docs.rs/lz-fear/latest/lz_fear/
+            * LZ4-HC not supported
+        * https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md
+        * Pre-trained dictionary compression
+        * snappy vs lz4: https://stackoverflow.com/a/67537112/94819
+        * C lib: https://lz4.github.io/lz4/
+    * snappy
+        * https://docs.rs/snap/latest/snap/
+        * https://github.com/google/snappy/blob/main/framing_format.txt
+    * zstd
+        * pure rust decompressor: https://github.com/KillingSpark/zstd-rs  
+          3.5x slower than original C++ implementation
+        * rust bindings for C++ lib: https://crates.io/crates/zstd
+    * lzo
+        * https://crates.io/crates/rust-lzo
+        * some bindings

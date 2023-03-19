@@ -8,6 +8,7 @@ use crate::{
 use http_cache_reqwest::CacheMode as HttpCacheMode;
 use std::{
     path::PathBuf,
+    result::Result as StdResult,
     str::FromStr,
 };
 
@@ -51,6 +52,15 @@ pub struct VersionSpecArg {
 }
 
 #[derive(clap::Args, Clone, Debug)]
+pub struct VersionArg {
+    /// The dump version to use.
+    ///
+    /// The value must be 8 numerical digits (e.g. "20230301").
+    #[arg(id = "version", long = "version")]
+    pub value: Version,
+}
+
+#[derive(clap::Args, Clone, Debug)]
 pub struct JobNameArg {
     /// The name of the job to use, e.g. `articlesdump`.
     ///
@@ -89,7 +99,7 @@ impl CommonArgs {
 impl FromStr for VersionSpec {
     type Err = clap::Error;
 
-    fn from_str(s: &str) -> std::result::Result<VersionSpec, clap::Error> {
+    fn from_str(s: &str) -> StdResult<VersionSpec, clap::Error> {
         if s == "latest" {
             return Ok(VersionSpec::Latest);
         }
@@ -101,6 +111,20 @@ impl FromStr for VersionSpec {
                 clap::error::ErrorKind::ValueValidation,
                 "The value must be 8 numerical digits (e.g. \"20230301\") \
                  or the string \"latest\"."))
+        }
+    }
+}
+
+impl FromStr for Version {
+    type Err = clap::Error;
+
+    fn from_str(s: &str) -> StdResult<Version, clap::Error> {
+        if lazy_regex!(r"^\d{8}$").is_match(s) {
+            Ok(Version(s.to_string()))
+        } else {
+            Err(clap::error::Error::raw(
+                clap::error::ErrorKind::ValueValidation,
+                "The value must be 8 numerical digits (e.g. \"20230301\")."))
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     args::CommonArgs,
-    page_store,
+    store,
     Result,
 };
 
@@ -11,14 +11,14 @@ pub struct Args {
     common: CommonArgs,
 
     #[arg(long)]
-    chunk_id: Option<page_store::ChunkId>,
+    chunk_id: Option<store::ChunkId>,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = page_store::Options::from_common_args(&args.common).build_store()?;
+    let store = store::Options::from_common_args(&args.common).build_store()?;
 
-    let mut chunk_ids: Vec<page_store::ChunkId> = Vec::new();
+    let mut chunk_ids: Vec<store::ChunkId> = Vec::new();
     match args.chunk_id {
         Some(chunk_id) => chunk_ids.push(chunk_id),
         None => {

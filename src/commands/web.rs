@@ -11,7 +11,7 @@ use axum::{
 use crate::{
     args::CommonArgs,
     article_dump,
-    page_store,
+    store,
     Result,
     wikitext,
 };
@@ -29,14 +29,14 @@ pub struct Args {
 
 struct WebState {
     args: Args,
-    page_store: page_store::Store,
+    page_store: store::Store,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
     let state = WebState {
         args: args.clone(),
-        page_store: page_store::Options::from_common_args(&args.common).build_store()?,
+        page_store: store::Options::from_common_args(&args.common).build_store()?,
     };
 
     let app = Router::new()
@@ -139,7 +139,7 @@ async fn get_page_by_store_id(
     Path((_dump_name, page_store_id)): Path<(String, String)>,
 ) -> std::result::Result<impl IntoResponse, WebError> {
 
-    let page_store_id = page_store_id.parse::<page_store::StorePageId>()?;
+    let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
     let Some(page_fb) = state.page_store.get_page_by_store_id(page_store_id)? else {
         return Ok(

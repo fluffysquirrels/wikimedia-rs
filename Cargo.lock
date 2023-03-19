@@ -1322,6 +1322,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "iterator-ext"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62c8d6e4fd801741f57d33b759ea39b0e3e81701f04289519cf34a9d893253cc"
+
+[[package]]
 name = "itoa"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1534,6 +1540,12 @@ dependencies = [
  "security-framework-sys",
  "tempfile",
 ]
+
+[[package]]
+name = "natord"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "308d96db8debc727c3fd9744aac51751243420e46edf401010908da7f8d5e57c"
 
 [[package]]
 name = "new_debug_unreachable"
@@ -3063,8 +3075,10 @@ dependencies = [
  "http-cache-reqwest",
  "human_format",
  "indicatif",
+ "iterator-ext",
  "memmap2",
  "mime",
+ "natord",
  "once_cell",
  "quick-xml",
  "rand 0.8.5",

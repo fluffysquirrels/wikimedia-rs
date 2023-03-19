@@ -20,18 +20,22 @@ pub async fn convert_page_to_html(
     let temp_dir = TempDir::create(&*common_args.out_dir, /* keep: */ false)?;
 
     // Write Lua filter
-    const LUA_FILTER: &'static str =
+
+    // TODO; Encode this as a Lua string literal.
+    let site_base: &str = "/enwiki/page/by-title/";
+    // let site_base: &str = "https://en.wikipedia.org/wiki/";
+    let lua_filter = format!(
         "
             function Link(el)
                 local target = el.target
                 if string.find(target, \"^http\") == nil then
-                    target = \"https://en.wikipedia.org/wiki/\" .. el.target
+                    target = \"{site_base}\" .. el.target
                 end
                 return pandoc.Link(el.content, target)
             end
-        ";
+        ");
     let lua_filter_path = temp_dir.path()?.join("filter.lua");
-    std::fs::write(&*lua_filter_path, LUA_FILTER.as_bytes())?;
+    std::fs::write(&*lua_filter_path, lua_filter.as_bytes())?;
 
     // Write header suffix
     let header_suffix_path = temp_dir.path()?.join("header_suffix.html");
@@ -60,6 +64,8 @@ pub async fn convert_page_to_html(
     let body_prefix_path = temp_dir.path()?.join("body_prefix.html");
     std::fs::write(&*body_prefix_path, body_prefix.as_bytes())?;
 
+    let html_title = format!("{title} | wmd web", title = page.title.replace('\'', "_"));
+
     let mut child =
         tokio::process::Command::new("pandoc")
         .args(&[
@@ -70,7 +76,7 @@ pub async fn convert_page_to_html(
             "--toc",
             "--number-sections",
             "--number-offset", "1",
-            "--metadata", &*format!("title:{}", page.title.replace('\'', "_")),
+            "--metadata", &*format!("title:{}", html_title),
             "--lua-filter", &*lua_filter_path.to_string_lossy(),
             "--include-in-header", &*header_suffix_path.to_string_lossy(),
             "--include-before-body", &*body_prefix_path.to_string_lossy(),

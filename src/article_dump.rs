@@ -47,11 +47,6 @@ struct PageIter<R: BufRead> {
     buf: Vec<u8>,
 }
 
-pub struct OpenFileOptions {
-    pub path: PathBuf,
-    pub compression: Compression,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum Compression {
     Bzip2,
@@ -149,11 +144,7 @@ pub fn open_dump_spec(
                 Error::msg("You supplied both --dump-file and --job-dir, but should only \
                             supply one of these")),
             (Some(file), None) => {
-                let open_options = OpenFileOptions {
-                    path: file.to_path_buf(),
-                    compression: file_spec.compression,
-                };
-                open_dump_file(open_options)?.boxed_local()
+                open_dump_file(file, file_spec.compression)?.boxed_local()
             },
             (None, Some(dir)) => {
                 open_dump_job_by_dir(dir, file_spec.compression,
@@ -178,10 +169,15 @@ pub fn open_dump_spec(
 }
 
 pub fn open_dump_file(
-    options: OpenFileOptions,
+    path: &Path,
+    compression: Compression,
 ) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
 {
-    let file_read = std::fs::File::open(options.path)?;
+    tracing::debug!(path = %path.display(),
+                    ?compression,
+                    "article_dump::open_dump_file");
+
+    let file_read = std::fs::File::open(path)?;
     let file_bufread = BufReader::with_capacity(64 * 1024, file_read);
 
     fn into_page_iter<T>(inner: T) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
@@ -196,7 +192,7 @@ pub fn open_dump_file(
         Ok(page_iter)
     }
 
-    match options.compression {
+    match compression {
         Compression::None => into_page_iter(file_bufread),
         Compression::Bzip2 => {
             let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
@@ -276,11 +272,7 @@ pub fn open_dump_job_by_dir(
 
     let pages = file_paths.into_iter()
         .map(move |file_path: PathBuf| { // -> Result<impl Iterator<Item = Result<Page>>>
-            let options = OpenFileOptions {
-                path: file_path,
-                compression: compression,
-            };
-            open_dump_file(options)
+            open_dump_file(&*file_path, compression)
         })
         .try_flatten_results(); // : impl Iterator<Item = Result<Page>>
 

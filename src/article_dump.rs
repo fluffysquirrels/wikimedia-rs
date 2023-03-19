@@ -54,18 +54,6 @@ pub enum Compression {
     None,
 }
 
-/// Used to exit early on Err in an Iterator<Item = Result<T>>::next() method.
-macro_rules! try_iter {
-    ($expr:expr $(,)?) => {
-        match $expr {
-            Ok(val) => val,
-            Err(err) => {
-                return Some(Err(err.into()));
-            }
-        }
-    };
-}
-
 impl FromStr for Compression {
     type Err = String;
 

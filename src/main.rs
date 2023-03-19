@@ -4,10 +4,13 @@
     iterator_try_reduce,
 )]
 
-// This module is first to import its macro.
+// These sub-modules are imported first to import their macros.
 #[macro_use]
 mod lazy_regex;
+#[macro_use]
+mod util;
 
+// The rest of these sub-modules are in alphabetical order.
 mod args;
 mod article_dump;
 mod commands;
@@ -19,7 +22,6 @@ mod store;
 mod temp_dir;
 mod types;
 mod user_regex;
-mod util;
 mod wikitext;
 
 use clap::Parser;

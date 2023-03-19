@@ -21,20 +21,6 @@ use std::{
 };
 use tracing::Level;
 
-macro_rules! try2 {
-    ($expr:expr $(,)?) => {
-        match $expr {
-            std::result::Result::Ok(std::option::Option::Some(val)) => val,
-            std::result::Result::Ok(std::option::Option::None) => {
-                return std::result::Result::Ok(std::option::Option::None);
-            }
-            std::result::Result::Err(err) => {
-                return std::result::Result::Err(std::convert::From::from(err));
-            }
-        }
-    };
-}
-
 pub struct Options {
     pub path: PathBuf,
     pub max_chunk_len: usize,

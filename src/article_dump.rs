@@ -1,11 +1,16 @@
 //! Read a Wikimedia article dump archive.
 
 use anyhow::format_err;
+use clap::{
+    builder::PossibleValue,
+    ValueEnum,
+};
 use crate::{
     args::{CommonArgs, DumpFileSpecArgs, DumpNameArg, JobNameArg},
     Error,
     Result,
     types::{FileMetadata, Version},
+    UserRegex,
     util::{IteratorExtLocal}
 };
 use iterator_ext::IteratorExt;
@@ -13,10 +18,13 @@ use quick_xml::events::Event;
 use serde::Serialize;
 use std::{
     borrow::Cow,
+    fmt::{self, Display},
     fs::DirEntry,
     io::{BufRead, BufReader, Error as IoError},
     iter::Iterator,
     path::{Path, PathBuf},
+    result::Result as StdResult,
+    str::FromStr,
 };
 use tracing::Level;
 
@@ -44,7 +52,7 @@ pub struct OpenFileOptions {
     pub compression: Compression,
 }
 
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug)]
 pub enum Compression {
     Bzip2,
     LZ4,
@@ -62,6 +70,44 @@ macro_rules! try_iter {
         }
     };
 }
+
+impl FromStr for Compression {
+    type Err = String;
+
+    fn from_str(s: &str) -> StdResult<Self, Self::Err> {
+        for variant in Self::value_variants() {
+            if variant.to_possible_value().unwrap().matches(s, true) {
+                return Ok(*variant);
+            }
+        }
+        Err(format!("invalid variant: {s}"))
+    }
+}
+
+impl Display for Compression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl clap::ValueEnum for Compression {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Bzip2, Self::LZ4, Self::None]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        Some(match self {
+            Self::Bzip2 => {
+                PossibleValue::new("bzip2")
+                              .alias("bz2")
+                              .help("Use bzip2 compression. Alias 'bz2'.")
+            }
+            Self::LZ4 => PossibleValue::new("lz4").help("Use LZ4 compression."),
+            Self::None => PossibleValue::new("none").help("Use no compression."),
+        })
+    }
+}
+
 
 pub fn job_file_path(
     out_dir: &Path,
@@ -110,13 +156,15 @@ pub fn open_dump_spec(
                 open_dump_file(open_options)?.boxed_local()
             },
             (None, Some(dir)) => {
-                open_dump_job_by_dir(dir, file_spec.compression)?
+                open_dump_job_by_dir(dir, file_spec.compression,
+                                     file_spec.file_name_regex.value.clone())?
                     .boxed_local()
             }
             (None, None) => {
                 open_dump_job(
                     &*common.out_dir, &file_spec.dump_name, &file_spec.version.value,
-                    &file_spec.job_name, file_spec.compression
+                    &file_spec.job_name, file_spec.compression,
+                    file_spec.file_name_regex.value.clone()
                 )?.boxed_local()
             },
         };
@@ -169,15 +217,17 @@ pub fn open_dump_job(
     version: &Version,
     job_name: &JobNameArg,
     compression: Compression,
+    user_file_name_regex: Option<UserRegex>,
 ) -> Result<impl Iterator<Item = Result<Page>>>
 {
     let job_path: PathBuf = job_path(out_dir, dump_name, version, job_name);
-    open_dump_job_by_dir(&*job_path, compression)
+    open_dump_job_by_dir(&*job_path, compression, user_file_name_regex)
 }
 
 pub fn open_dump_job_by_dir(
     job_path: &Path,
     compression: Compression,
+    user_file_name_regex: Option<UserRegex>,
 ) -> Result<impl Iterator<Item = Result<Page>>>
 {
     let mut file_paths =
@@ -189,13 +239,18 @@ pub fn open_dump_job_by_dir(
                 if !dir_entry.file_type()?.is_file() {
                     return Ok(None);
                 }
+                macro_rules! file_re_prefix {
+                    () => { r#".*pages.*articles[0-9]+\.xml-p[0-9]+p[0-9]+"# };
+                }
                 let name_regex = match compression {
-                    Compression::Bzip2 => lazy_regex!("pages.*articles.*xml.*\\.bz2$"),
-                    Compression::LZ4 => lazy_regex!("pages.*articles.*xml.*\\.lz4$"),
-                    Compression::None => lazy_regex!("pages.*articles.*xml.*$"),
+                    Compression::Bzip2 => lazy_regex!(file_re_prefix!(), r#"\.bz2$"#),
+                    Compression::LZ4 => lazy_regex!(file_re_prefix!(), r#"\.lz4$"#),
+                    Compression::None => lazy_regex!(file_re_prefix!(), r#"$"#),
                 };
                 let name = dir_entry.file_name().to_string_lossy().into_owned();
-                if name_regex.is_match(&*name) {
+                if name_regex.is_match(&*name)
+                    && user_file_name_regex.as_ref().map_or(true, |re| re.0.is_match(&*name))
+                {
                     Ok(Some(dir_entry.path()))
                 } else {
                     Ok(None)

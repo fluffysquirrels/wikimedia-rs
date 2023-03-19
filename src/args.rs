@@ -94,6 +94,9 @@ pub struct DumpFileSpecArgs {
     /// Maximum count of pages to import. No limit if omitted.
     #[arg(long)]
     pub count: Option<usize>,
+
+    #[clap(flatten)]
+    pub file_name_regex: FileNameRegexArg,
 }
 
 #[derive(clap::Args, Clone, Debug)]

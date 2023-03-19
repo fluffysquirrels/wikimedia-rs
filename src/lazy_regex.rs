@@ -2,8 +2,8 @@
 //! <https://docs.rs/once_cell/1.17.1/once_cell/index.html#lazily-compiled-regex>
 
 macro_rules! lazy_regex {
-    ($re:literal $(,)?) => {{
+    ( $( $re:expr ),+ ) => {{
         static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
-        RE.get_or_init(|| regex::Regex::new($re).expect("regex to compile"))
+        RE.get_or_init(|| regex::Regex::new( concat!($( $re ),+) ).expect("regex to compile"))
     }};
 }

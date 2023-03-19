@@ -1,2 +1,2 @@
 mod collections;
-pub use collections::IteratorExt;
+pub use collections::{IteratorExt, IteratorExtLocal};

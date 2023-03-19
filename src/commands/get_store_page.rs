@@ -22,17 +22,19 @@ pub struct Args {
     #[arg(long)]
     chunk_id: Option<store::ChunkId>,
 
-    /// Choose an output type for the page: HTML or Json. HTML
-    /// requires `pandoc` to be installed and on your path.
+    /// Choose an output type for the page
+    ///
+    /// HTML requires `pandoc` to be installed and on your path.
     #[arg(long, value_enum, default_value_t = OutputType::Json)]
     out: OutputType,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum OutputType {
+    Html,
     Json,
     JsonWithBody,
-    Html,
+    None,
 }
 
 #[tracing::instrument(level = "trace")]
@@ -86,6 +88,7 @@ fn check_output_type_not_html(output_type: OutputType) -> Result<()> {
 
 async fn output_page(args: &Args, page: wm::Page<'_>) -> Result<()> {
     match args.out {
+        OutputType::None => {},
         OutputType::Json => {
             let page = store::convert_store_page_to_article_dump_page_without_body(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;

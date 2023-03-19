@@ -2,6 +2,7 @@ mod http_cache_mode;
 use http_cache_mode::HttpCacheModeParser;
 
 use crate::{
+    article_dump::Compression,
     types::{Version, VersionSpec},
     UserRegex,
 };
@@ -68,6 +69,31 @@ pub struct JobNameArg {
     /// finally uses `articlesdump` as a default.
     #[arg(id = "job", long = "job", default_value = "articlesdump", env = "WMD_JOB")]
     pub value: String,
+}
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct DumpFileSpecArgs {
+    #[clap(flatten)]
+    pub dump_name: DumpNameArg,
+
+    #[clap(flatten)]
+    pub version: VersionArg,
+
+    #[clap(flatten)]
+    pub job_name: JobNameArg,
+
+    #[arg(long)]
+    pub dump_file: Option<PathBuf>,
+
+    #[arg(long)]
+    pub job_dir: Option<PathBuf>,
+
+    #[arg(long, value_enum, default_value_t = Compression::Bzip2)]
+    pub compression: Compression,
+
+    /// Maximum count of pages to import. No limit if omitted.
+    #[arg(long)]
+    pub count: Option<usize>,
 }
 
 #[derive(clap::Args, Clone, Debug)]

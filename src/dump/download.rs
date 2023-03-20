@@ -1,6 +1,6 @@
 //! Download data from Wikimedia dumps server and mirrors.
 
-use anyhow::Context;
+use anyhow::{Context, format_err};
 use crate::{
     args::{DumpNameArg, JobNameArg},
     dump::{self, Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
@@ -8,10 +8,12 @@ use crate::{
     Result,
     TempDir,
     UserRegex,
+    util::fmt::{Bytes, TransferStats},
 };
 use sha1::{Sha1, Digest};
 use std::{
     path::Path,
+    time::Instant,
 };
 use tokio_stream::StreamExt;
 use tracing::Level;
@@ -28,7 +30,7 @@ pub enum ExistingFileStatus {
 #[derive(Clone, Debug)]
 pub struct DownloadJobFileResult {
     pub kind: DownloadJobFileResultKind,
-    pub len: u64,
+    pub stats: TransferStats,
 }
 
 #[derive(Clone, Debug)]
@@ -180,7 +182,8 @@ pub async fn get_job_status(
     let (ver, ver_status) = get_dump_version_status(&client, &dump_name, version_spec).await?;
 
     let Some(job_status) = ver_status.jobs.get(&job_name.value) else {
-        return Err(anyhow::Error::msg(format!("No status found for job dump_name={dump_name} version={ver} job_name={job_name}",
+        return Err(anyhow::Error::msg(format!("No status found for job dump_name={dump_name} \
+                                               version={ver} job_name={job_name}",
                                               dump_name = dump_name.value,
                                               ver = ver.0,
                                               job_name = job_name.value)));
@@ -191,11 +194,12 @@ pub async fn get_job_status(
     }
 
     if job_status.status != "done" {
-        return Err(anyhow::Error::msg(format!("Job status is not 'done' status={status} dump={dump_name} version={ver} job={job_name}",
-                                              status = job_status.status,
-                                              dump_name = dump_name.value,
-                                              ver = ver.0,
-                                              job_name = job_name.value)));
+        return Err(format_err!("Job status is not 'done' status={status} dump={dump_name} \
+                                version={ver} job={job_name}",
+                               status = job_status.status,
+                               dump_name = dump_name.value,
+                               ver = ver.0,
+                               job_name = job_name.value));
     }
 
     Ok((ver, job_status.clone()))
@@ -215,7 +219,10 @@ pub async fn get_file_infos(
     let mut files: Vec<(String, FileMetadata)> = match file_name_regex {
         None => job_status.files.into_iter().collect(),
         Some(UserRegex(re)) => job_status.files.into_iter()
-                                         .filter(|(name, _)| re.is_match(name.as_str()))
+                                         .filter(|(name, meta)|
+                                                 re.is_match(name.as_str())
+                                                 && meta.size.is_some()
+                                                 && meta.url.is_some())
                                          .collect(),
     };
     files.sort_by(|(a, _), (b, _)| natord::compare(&*a, &*b));
@@ -234,12 +241,18 @@ pub async fn download_job_file(
     out_dir: &Path,
     temp_dir: &TempDir,
 ) -> Result<DownloadJobFileResult> {
-    validate_file_relative_url(&*file_meta.url)?;
 
-    let url =
-        format!("{mirror_url}{file_rel_url}",
-                mirror_url = mirror_url,
-                file_rel_url = file_meta.url);
+    let start = Instant::now();
+
+    let rel_url = file_meta.url.as_ref().map(|s| s.as_str()).ok_or_else(|| format_err!(
+        "File URL missing. Usually this is because the parent job has status 'waiting'."))?;
+    let expected_len = file_meta.size.ok_or_else(|| format_err!(
+        "File size missing. Usually this is because the parent job has status 'waiting'."))?;
+    let expected_len = Bytes(expected_len);
+
+    validate_file_relative_url(rel_url)?;
+
+    let url = format!("{mirror_url}{rel_url}");
 
     let file_out_path = dump::local::job_file_path(out_dir, dump_name, ver, job_name, file_meta)?;
     let file_name = file_out_path.file_name().expect("non-empty file name");
@@ -248,7 +261,7 @@ pub async fn download_job_file(
         ExistingFileStatus::FileOk | ExistingFileStatus::NoSha1HashToCheck
             => return Ok(DownloadJobFileResult {
                              kind: DownloadJobFileResultKind::ExistingOk,
-                             len: file_meta.size,
+                             stats: TransferStats::new(expected_len, start.elapsed()),
                          }),
         _ => (),
     };
@@ -261,21 +274,20 @@ pub async fn download_job_file(
     tracing::info!(
         url,
         out_path = %file_out_path.display(),
-        expected_len = file_meta.size,
+        ?expected_len,
         "download_job_file starting download");
 
     let download_request = client.get(url.clone())
                                  .build()?;
     let download_result = http::download_file(&client, download_request, &*temp_file_path).await?;
 
-    if download_result.len != file_meta.size {
+    if download_result.stats.len != expected_len {
         return Err(anyhow::Error::msg(format!(
             "Download job file was the wrong size \
              url='{url}' \
-             expected_len={expected_len} \
-             file_len={file_len}",
-            expected_len = file_meta.size,
-            file_len = download_result.len)));
+             expected_len={expected_len:?} \
+             file_len={file_len:?}",
+            file_len = download_result.stats.len)));
     }
 
     match file_meta.sha1.as_ref() {
@@ -307,16 +319,14 @@ pub async fn download_job_file(
                     file_out_path = %file_out_path.display(),
                     "Moved downloaded file from temp directory to output directory");
 
-    tracing::info!(duration = ?download_result.duration,
-                   download_rate = %download_result.download_rate(),
-                   url,
+    tracing::info!(url,
                    out_path = %file_out_path.display(),
-                   len = download_result.len,
+                   stats = ?download_result.stats.clone(),
                    "download_job_file download complete, file OK");
 
     Ok(DownloadJobFileResult {
         kind: DownloadJobFileResultKind::DownloadOk,
-        len: download_result.len,
+        stats: download_result.stats,
     })
 }
 
@@ -364,6 +374,8 @@ async fn check_existing_file(
     // Wrapped in a closure to add context on errors.
     (async || -> Result<ExistingFileStatus> {
 
+        let expected_len = Bytes(file_meta.size.ok_or(format_err!("file_meta missing size"))?);
+
         // Look for an existing file at the output path.
         let existing_meta = match path.metadata() {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -392,21 +404,20 @@ async fn check_existing_file(
         }
 
         // Check existing file length
-        let expected_len = file_meta.size;
-        let existing_len = existing_meta.len();
+        let existing_len = Bytes(existing_meta.len());
         if expected_len != existing_len {
             // Existing file length does not match expected.
             tracing::warn!(path = %path.display(),
-                           existing_len,
-                           expected_len,
+                           ?existing_len,
+                           ?expected_len,
                            url,
                            "Deleting existing file that was the wrong size");
 
             std::fs::remove_file(&*path)
                 .with_context(
                     || format!("while deleting existing file that was the wrong size \
-                                existing_len={existing_len} \
-                                expected_len={expected_len}"))?;
+                                existing_len={existing_len:?} \
+                                expected_len={expected_len:?}"))?;
 
             return Ok(ExistingFileStatus::DeletedBecauseIncorrectSize);
         }
@@ -441,7 +452,7 @@ async fn check_existing_file(
             return Ok(ExistingFileStatus::FileOk);
         } else {
             // Existing file's SHA1 hash was incorrect, delete it.
-            tracing::warn!(file_len = expected_len,
+            tracing::warn!(file_len = ?expected_len,
                            file_path = %path.display(),
                            existing_sha1,
                            expected_sha1,

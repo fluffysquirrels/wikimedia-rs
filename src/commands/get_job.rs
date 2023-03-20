@@ -56,7 +56,7 @@ pub async fn main(args: Args) -> Result<()> {
             let job = JobOutput {
                 name: job_name.clone(),
                 files_size: job_status.files.values()
-                                            .map(|file_info| file_info.size)
+                                            .map(|file_info| file_info.size.unwrap_or(0))
                                             .sum(),
                 files_count: job_status.files.len(),
                 status: job_status.clone(),

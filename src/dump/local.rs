@@ -11,7 +11,10 @@ use crate::{
     Error,
     Result,
     UserRegex,
-    util::IteratorExtLocal,
+    util::{
+        fmt::Bytes,
+        IteratorExtLocal,
+    },
     wikitext,
 };
 use iterator_ext::IteratorExt;
@@ -84,11 +87,11 @@ pub fn job_file_path(
     job_name: &JobNameArg,
     file_meta: &FileMetadata
 ) -> Result<PathBuf> {
-    let file_name = file_meta.url.split('/').last()
-                                 .ok_or_else(|| format_err!("file_meta.url was empty url='{url}'",
-                                                            url = file_meta.url))?;
+    let rel_url = file_meta.url.as_ref().ok_or_else(|| format_err!("file_meta.url was None"))?;
+    let name = rel_url.split('/').last()
+                      .ok_or_else(|| format_err!("file_meta.url was empty url='{rel_url}'"))?;
     let path = job_path(out_dir, dump_name, version, job_name)
-                   .join(file_name);
+                   .join(name);
     Ok(path)
 }
 
@@ -250,7 +253,7 @@ pub fn open_dump_job_by_dir(
                                           { Ok(curr + len?) })?;
 
     if tracing::enabled!(Level::DEBUG) {
-        tracing::debug!(files_total_len,
+        tracing::debug!(files_total_len = ?Bytes(files_total_len),
                         file_count = file_paths.len(),
                         file_paths = ?file_paths.iter().map(|p| p.to_string_lossy())
                                                 .collect::<Vec<Cow<'_, str>>>(),

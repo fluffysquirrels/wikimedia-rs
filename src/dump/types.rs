@@ -27,8 +27,11 @@ pub struct JobStatus {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileMetadata {
-    pub size: u64,
-    pub url: String,
+    /// File length in bytes. Missing for jobs with status "waiting".
+    pub size: Option<u64>,
+
+    /// File relative URL under the dumps root. Missing for jobs with status "waiting".
+    pub url: Option<String>,
 
     /// Expected SHA1 hash of the file's data, formatted as a lowercase hex string.
     pub sha1: Option<String>,

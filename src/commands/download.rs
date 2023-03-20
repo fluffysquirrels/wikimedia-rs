@@ -8,7 +8,7 @@ use crate::{
     http,
     Result,
     TempDir,
-    util::fmt,
+    util::fmt::{Bytes, TransferStats},
 };
 use std::time::Instant;
 
@@ -89,17 +89,17 @@ pub async fn main(args: Args) -> Result<()> {
                      dump='{dump_name}' \
                      version='{ver}' \
                      job='{job_name}' \
-                     file='{file_rel_url}'",
+                     file='{file_rel_url:?}'",
                     ver = ver.0,
-                    file_rel_url = &*file_meta.url))?;
+                    file_rel_url = &file_meta.url))?;
         match res.kind {
             DownloadJobFileResultKind::DownloadOk => {
                 download_ok += 1;
-                download_len += res.len;
+                download_len += res.stats.len.0;
             },
             DownloadJobFileResultKind::ExistingOk => {
                 existing_ok += 1;
-                existing_len += res.len;
+                existing_len += res.stats.len.0;
             },
         };
         // progress.inc(1);
@@ -112,11 +112,9 @@ pub async fn main(args: Args) -> Result<()> {
     let duration = start_time.elapsed();
 
     tracing::info!(download_ok,
-                   download_len,
-                   download_len_str = fmt::bytes(download_len),
+                   download_stats = ?TransferStats::new(Bytes(download_len), duration),
                    existing_ok,
-                   existing_len,
-                   existing_len_str = fmt::bytes(existing_len),
+                   existing_stats = ?TransferStats::new(Bytes(existing_len), duration),
                    ?duration,
                    "download command complete");
 

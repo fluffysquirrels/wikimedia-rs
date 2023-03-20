@@ -4,13 +4,12 @@ use anyhow::Context;
 use crate::{
     args,
     Result,
-    util::fmt as wmd_fmt,
+    util::fmt::{Bytes, TransferStats},
 };
 use encoding_rs::{Encoding, UTF_8};
 use sha1::{Digest, Sha1};
 use std::{
     convert::TryFrom,
-    fmt::{self, Display},
     path::Path,
     time::{Duration, Instant},
 };
@@ -22,59 +21,18 @@ use tracing::Level;
 pub struct DownloadFileResult {
     /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
     pub sha1: String,
-
-    /// Downloaded file size in bytes.
-    pub len: u64,
-
-    /// Duration of the file download.
-    pub duration: Duration,
-
+    pub stats: TransferStats,
     pub response_code: reqwest::StatusCode,
-}
-
-pub struct FetchTextResult {
-    pub response_body: String,
-    pub response_code: reqwest::StatusCode,
-    pub len: u64,
-    pub duration: Duration,
 }
 
 #[derive(Clone, Debug)]
-pub struct DownloadRate(pub f64);
+pub struct FetchTextResult {
+    pub response_body: String,
+    pub response_code: reqwest::StatusCode,
+    pub stats: TransferStats,
+}
 
 pub type Client = reqwest_middleware::ClientWithMiddleware;
-
-impl DownloadFileResult {
-    pub fn download_rate(&self) -> DownloadRate {
-        DownloadRate::new(self.len, self.duration)
-    }
-}
-
-impl FetchTextResult {
-    pub fn download_rate(&self) -> DownloadRate {
-        DownloadRate::new(self.len, self.duration)
-    }
-}
-
-impl DownloadRate {
-    pub fn new(len: u64, duration: Duration) -> DownloadRate {
-        let secs = duration.as_secs_f64();
-        let rate = if secs.abs() < f64::EPSILON {
-            0.
-        } else {
-            (len as f64) / secs
-        };
-
-        DownloadRate(rate)
-    }
-}
-
-impl Display for DownloadRate {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let string = wmd_fmt::bytes_per_second(self.0);
-        f.write_str(&*string)
-    }
-}
 
 /// Constructs a `Client` suitable for fetching metadata.
 ///
@@ -196,7 +154,7 @@ pub async fn download_file(
         file.flush().await?;
         file.sync_all().await?;
 
-        let file_len = file.metadata().await?.len();
+        let file_len = Bytes(file.metadata().await?.len());
 
         drop(file);
 
@@ -208,14 +166,12 @@ pub async fn download_file(
         let res = DownloadFileResult {
             response_code: download_res_code,
             sha1: sha1_hash_string,
-            len: file_len,
-            duration,
+            stats: TransferStats::new(file_len, duration),
         };
 
         tracing::debug!(url = %url.clone(),
                         method = %method.clone(),
-                        ?duration,
-                        download_rate = %res.download_rate(),
+                        stats = ?res.stats.clone(),
                         "http::download_file() done");
 
         Ok(res)
@@ -304,14 +260,13 @@ pub async fn fetch_text(
         let res = FetchTextResult {
             response_body: response_body_string,
             response_code: res_code,
-            len: u64::try_from(len).expect("usize to convert to u64"),
-            duration,
+            stats: TransferStats::new(
+                       Bytes(u64::try_from(len).expect("usize to convert to u64")),
+                       duration),
         };
 
         tracing::info!(%url,
-                       len,
-                       ?duration,
-                       download_rate = %res.download_rate().clone(),
+                       stats = ?res.stats.clone(),
                        "http::fetch_text() complete");
 
         Ok(res)

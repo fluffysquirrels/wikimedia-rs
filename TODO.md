@@ -14,6 +14,16 @@
 ## Might do
 
 ### Features
+* Human readable numbers in logs: e.g. bytes, bytes / second
+    * Dream would be:
+        * Custom tuple structs for these
+        * Formatted as pretty for console logging
+        * For bunyan JSON logging log a struct as a JSON value (with
+          valuable) with both a string and a number.
+        * Then can jq the human readable text for output, but filter
+          or aggregate the raw numbers.
+    * Valuable support for tracing-bunyan-formatter:  https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
+
 * Performance
     * get-store-page --out none takes 491s.
 * Improve downloads

@@ -274,7 +274,7 @@ impl Store {
     pub fn import(&mut self, pages: impl Iterator<Item = Result<dump::Page>> + 'static
     ) -> Result<ImportResult> {
         // import_inner takes a `Box<dyn Iterator>` so we don't have to generate
-        // many versions of the whole body.
+        // many versions of the whole body for each iterator type that is passed in.
         self.import_inner(Box::new(pages))
     }
 

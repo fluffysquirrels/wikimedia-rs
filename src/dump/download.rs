@@ -214,7 +214,9 @@ pub async fn get_file_infos(
 
     let mut files: Vec<(String, FileMetadata)> = match file_name_regex {
         None => job_status.files.into_iter().collect(),
-        Some(re) => job_status.files.into_iter().filter(|kv| re.0.is_match(&*kv.0)).collect(),
+        Some(UserRegex(re)) => job_status.files.into_iter()
+                                         .filter(|(name, _)| re.is_match(name.as_str()))
+                                         .collect(),
     };
     files.sort_by(|(a, _), (b, _)| natord::compare(&*a, &*b));
 

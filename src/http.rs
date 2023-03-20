@@ -4,11 +4,13 @@ use anyhow::Context;
 use crate::{
     args,
     Result,
+    util::fmt as wmd_fmt,
 };
 use encoding_rs::{Encoding, UTF_8};
 use sha1::{Digest, Sha1};
 use std::{
     convert::TryFrom,
+    fmt::{self, Display},
     path::Path,
     time::{Duration, Instant},
 };
@@ -67,14 +69,9 @@ impl DownloadRate {
     }
 }
 
-impl std::fmt::Display for DownloadRate {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let string =
-            human_format::Formatter::new()
-                .with_scales(human_format::Scales::SI())
-                .with_decimals(2)
-                .with_units("B/s")
-                .format(self.0);
+impl Display for DownloadRate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let string = wmd_fmt::bytes_per_second(self.0);
         f.write_str(&*string)
     }
 }

@@ -1,5 +1,10 @@
+//! Data types used in Wikimedia data dumps and their metadata.
+
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display},
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DumpVersionStatus {
@@ -64,4 +69,29 @@ pub struct Version(pub String);
 pub enum VersionSpec {
     Latest,
     Version(Version),
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Page {
+    pub ns_id: u64,
+    pub id: u64,
+    pub title: String,
+    pub revision: Option<Revision>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct Revision {
+    pub id: u64,
+    pub text: Option<String>,
+    pub categories: Vec<CategoryName>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(transparent)]
+pub struct CategoryName(pub String);
+
+impl Display for CategoryName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Category:{name}", name = self.0)
+    }
 }

@@ -1,13 +1,12 @@
-//! Functions that are re-used between commands
+//! Download data from Wikimedia dumps server and mirrors.
 
 use anyhow::Context;
 use crate::{
     args::{DumpNameArg, JobNameArg},
-    article_dump,
+    dump::{self, Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
     http,
     Result,
     TempDir,
-    types::{Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
     UserRegex,
 };
 use sha1::{Sha1, Digest};
@@ -213,10 +212,11 @@ pub async fn get_file_infos(
     let (ver, job_status) = get_job_status(&client, dump_name,
                                            version_spec, job_name).await?;
 
-    let files: Vec<(String, FileMetadata)> = match file_name_regex {
+    let mut files: Vec<(String, FileMetadata)> = match file_name_regex {
         None => job_status.files.into_iter().collect(),
         Some(re) => job_status.files.into_iter().filter(|kv| re.0.is_match(&*kv.0)).collect(),
     };
+    files.sort_by(|(a, _), (b, _)| natord::compare(&*a, &*b));
 
     Ok((ver, files))
 }
@@ -239,7 +239,7 @@ pub async fn download_job_file(
                 mirror_url = mirror_url,
                 file_rel_url = file_meta.url);
 
-    let file_out_path = article_dump::job_file_path(out_dir, dump_name, ver, job_name, file_meta)?;
+    let file_out_path = dump::local::job_file_path(out_dir, dump_name, ver, job_name, file_meta)?;
     let file_name = file_out_path.file_name().expect("non-empty file name");
 
     match check_existing_file(&*file_out_path, file_meta, &*url).await? {

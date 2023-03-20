@@ -1,7 +1,7 @@
 use crate::{
     args::{CommonArgs, JsonOutputArg},
+    dump,
     http,
-    operations,
     Result,
 };
 
@@ -19,7 +19,7 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let client = http::metadata_client(&args.common)?;
 
-    let mut dumps = operations::get_dumps(&client).await?;
+    let mut dumps = dump::download::get_dumps(&client).await?;
     dumps.sort();
     // Rebind as immutable
     let dumps = dumps;

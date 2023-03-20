@@ -1,6 +1,6 @@
 use anyhow::{ensure, format_err};
 use crate::{
-    article_dump,
+    dump,
     fbs::wikimedia as wm,
     Result,
     slug,
@@ -271,14 +271,14 @@ impl Store {
         Ok(())
     }
 
-    pub fn import(&mut self, pages: impl Iterator<Item = Result<article_dump::Page>> + 'static
+    pub fn import(&mut self, pages: impl Iterator<Item = Result<dump::Page>> + 'static
     ) -> Result<ImportResult> {
         // import_inner takes a `Box<dyn Iterator>` so we don't have to generate
         // many versions of the whole body.
         self.import_inner(Box::new(pages))
     }
 
-    fn import_inner(&mut self, pages: Box<dyn Iterator<Item = Result<article_dump::Page>>>
+    fn import_inner(&mut self, pages: Box<dyn Iterator<Item = Result<dump::Page>>>
     ) -> Result<ImportResult> {
 
         let start = Instant::now();
@@ -309,7 +309,7 @@ impl Store {
         Ok(res)
     }
 
-    fn import_chunk(&mut self, pages: &mut dyn Iterator<Item = Result<article_dump::Page>>
+    fn import_chunk(&mut self, pages: &mut dyn Iterator<Item = Result<dump::Page>>
     ) -> Result<ImportChunkResult> {
         let start = Instant::now();
 
@@ -634,31 +634,35 @@ impl MappedChunk {
     }
 }
 
-impl<'a, 'b> TryFrom<&'a wm::Page<'b>> for article_dump::Page {
+impl<'a, 'b> TryFrom<&'a wm::Page<'b>> for dump::Page {
     type Error = anyhow::Error;
 
-    fn try_from(page_fb: &'a wm::Page<'b>) -> Result<article_dump::Page> {
-        Ok(article_dump::Page {
-            ns_id: page_fb.ns_id(),
-            id: page_fb.id(),
-            title: page_fb.title().to_string(),
-            revision: page_fb.revision().as_ref().map(|revision| article_dump::Revision {
-                id: revision.id(),
-                text: revision.text().map(|text| text.to_string()),
-            }),
-        })
+    fn try_from(page_fb: &'a wm::Page<'b>) -> Result<dump::Page> {
+        let mut page = convert_store_page_to_dump_page_without_body(page_fb)?;
+
+        if let dump::Page {
+            revision: Some(dump::Revision { ref mut text, .. }),
+            ..
+        } = page {
+            *text = page_fb.revision()
+                           .expect("just converted from this")
+                           .text()
+                           .map(|s| s.to_string());
+        }
+        Ok(page)
     }
 }
 
-pub fn convert_store_page_to_article_dump_page_without_body<'a, 'b>(page_fb: &'a wm::Page<'b>
-) -> Result<article_dump::Page> {
-    Ok(article_dump::Page {
+pub fn convert_store_page_to_dump_page_without_body<'a, 'b>(page_fb: &'a wm::Page<'b>
+) -> Result<dump::Page> {
+    Ok(dump::Page {
         ns_id: page_fb.ns_id(),
         id: page_fb.id(),
         title: page_fb.title().to_string(),
-        revision: page_fb.revision().as_ref().map(|revision| article_dump::Revision {
+        revision: page_fb.revision().as_ref().map(|revision| dump::Revision {
             id: revision.id(),
             text: None,
+            categories: vec![],
         }),
     })
 }

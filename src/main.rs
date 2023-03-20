@@ -12,15 +12,13 @@ mod util;
 
 // The rest of these sub-modules are in alphabetical order.
 mod args;
-mod article_dump;
 mod commands;
+mod dump;
 mod fbs;
 mod http;
-mod operations;
 mod slug;
 mod store;
 mod temp_dir;
-mod types;
 mod user_regex;
 mod wikitext;
 

@@ -1,9 +1,8 @@
 use crate::{
     args::{CommonArgs, DumpNameArg, FileNameRegexArg, JobNameArg, JsonOutputArg, VersionSpecArg},
+    dump::{self, FileInfoOutput},
     http,
-    operations,
     Result,
-    types::FileInfoOutput,
 };
 
 /// Get metadata about files available for download from a job.
@@ -32,7 +31,7 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let client = http::metadata_client(&args.common)?;
 
-    let (_ver, files) = operations::get_file_infos(
+    let (_ver, files) = dump::download::get_file_infos(
         &client,
         &args.dump_name,
         &args.version_spec.value,

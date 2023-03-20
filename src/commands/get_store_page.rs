@@ -1,7 +1,7 @@
 use anyhow::format_err;
 use crate::{
     args::CommonArgs,
-    article_dump,
+    dump,
     fbs::wikimedia as wm,
     store::self,
     Result,
@@ -90,17 +90,17 @@ async fn output_page(args: &Args, page: wm::Page<'_>) -> Result<()> {
     match args.out {
         OutputType::None => {},
         OutputType::Json => {
-            let page = store::convert_store_page_to_article_dump_page_without_body(&page)?;
+            let page = store::convert_store_page_to_dump_page_without_body(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;
             println!();
         },
         OutputType::JsonWithBody => {
-            let page = article_dump::Page::try_from(&page)?;
+            let page = dump::Page::try_from(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;
             println!();
         },
         OutputType::Html => {
-            let page = article_dump::Page::try_from(&page)?;
+            let page = dump::Page::try_from(&page)?;
             let html = wikitext::convert_page_to_html(&args.common, &page).await?;
             std::io::stdout().write_all(&*html)?;
         }

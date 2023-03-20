@@ -13,7 +13,7 @@ pub struct TempDir {
 impl TempDir {
     pub fn create(out_dir_path: &Path, keep: bool) -> Result<TempDir> {
         let temp_path = out_dir_path.join(
-            format!("_temp/{time}_{pid}_{rand}",
+            format!("temp/{time}_{pid}_{rand}",
                     time = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs,
                                                               true /* use_z */),
                     pid = std::process::id(),

@@ -2,8 +2,7 @@ mod http_cache_mode;
 use http_cache_mode::HttpCacheModeParser;
 
 use crate::{
-    article_dump::Compression,
-    types::{Version, VersionSpec},
+    dump::{local::Compression, Version, VersionSpec},
     UserRegex,
 };
 use http_cache_reqwest::CacheMode as HttpCacheMode;
@@ -53,15 +52,6 @@ pub struct VersionSpecArg {
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct VersionArg {
-    /// The dump version to use.
-    ///
-    /// The value must be 8 numerical digits (e.g. "20230301").
-    #[arg(id = "version", long = "version")]
-    pub value: Version,
-}
-
-#[derive(clap::Args, Clone, Debug)]
 pub struct JobNameArg {
     /// The name of the job to use, e.g. `articlesdump`.
     ///
@@ -74,16 +64,27 @@ pub struct JobNameArg {
 #[derive(clap::Args, Clone, Debug)]
 pub struct DumpFileSpecArgs {
     #[clap(flatten)]
-    pub dump_name: DumpNameArg,
+    pub dump_name: Option<DumpNameArg>,
+
+    /// The dump version to use.
+    ///
+    /// The value must be 8 numerical digits (e.g. "20230301").
+    #[arg(long)]
+    pub version: Option<Version>,
 
     #[clap(flatten)]
-    pub version: VersionArg,
-
-    #[clap(flatten)]
-    pub job_name: JobNameArg,
+    pub job_name: Option<JobNameArg>,
 
     #[arg(long)]
     pub dump_file: Option<PathBuf>,
+
+    /// Seek to this file offset before reading.
+    ///
+    /// Can be used with multistream dump files.
+    ///
+    /// Only used when --dump-file is set.
+    #[arg(long)]
+    pub seek: Option<u64>,
 
     #[arg(long)]
     pub job_dir: Option<PathBuf>,
@@ -117,11 +118,11 @@ pub struct JsonOutputArg {
 
 impl CommonArgs {
     pub fn http_cache_path(&self) -> PathBuf {
-        self.out_dir.join("_http_cache")
+        self.out_dir.join("http_cache")
     }
 
     pub fn page_store_path(&self) -> PathBuf {
-        self.out_dir.join("_page_store")
+        self.out_dir.join("page_store")
     }
 }
 

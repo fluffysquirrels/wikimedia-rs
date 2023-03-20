@@ -10,7 +10,7 @@ use axum::{
 };
 use crate::{
     args::CommonArgs,
-    article_dump,
+    dump,
     store,
     Result,
     wikitext,
@@ -149,7 +149,7 @@ async fn get_page_by_store_id(
             ).into_response()
         );
     };
-    let page = article_dump::Page::try_from(&page_fb.borrow())?;
+    let page = dump::Page::try_from(&page_fb.borrow())?;
     let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
 
     Ok(response::Html(html).into_response())
@@ -172,7 +172,7 @@ async fn get_page_by_id(
             ).into_response()
         );
     };
-    let page = article_dump::Page::try_from(&page_fb.borrow())?;
+    let page = dump::Page::try_from(&page_fb.borrow())?;
     let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
 
     Ok(response::Html(html).into_response())
@@ -191,7 +191,7 @@ async fn get_page_by_title(
             ).into_response()
         );
     };
-    let page = article_dump::Page::try_from(&page_fb.borrow())?;
+    let page = dump::Page::try_from(&page_fb.borrow())?;
     let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
 
     Ok(response::Html(html).into_response())

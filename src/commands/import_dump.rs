@@ -1,6 +1,6 @@
 use crate::{
     args::{CommonArgs, DumpFileSpecArgs},
-    article_dump,
+    dump,
     store,
     Result,
 };
@@ -21,7 +21,7 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let pages = article_dump::open_dump_spec(&args.common, &args.dump_file_spec)?;
+    let pages = dump::local::open_dump_spec(&args.common, &args.dump_file_spec)?;
 
     let mut store = store::Options::from_common_args(&args.common).build_store()?;
     if args.clear {

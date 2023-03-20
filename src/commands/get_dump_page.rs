@@ -1,6 +1,6 @@
 use crate::{
     args::{CommonArgs, DumpFileSpecArgs},
-    article_dump,
+    dump,
     Result,
 };
 use std::{
@@ -29,7 +29,7 @@ enum OutputType {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let pages = article_dump::open_dump_spec(&args.common, &args.dump_file_spec)?;
+    let pages = dump::local::open_dump_spec(&args.common, &args.dump_file_spec)?;
 
     for page in pages {
         let mut page = page?;

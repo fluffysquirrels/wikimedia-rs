@@ -1,10 +1,14 @@
 use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, FileNameRegexArg, JobNameArg, VersionSpecArg},
+    dump::{
+        self,
+        download::DownloadJobFileResultKind
+    },
     http,
-    operations::{self, DownloadJobFileResultKind},
     Result,
     TempDir,
+    util::fmt,
 };
 use std::time::Instant;
 
@@ -54,7 +58,7 @@ pub async fn main(args: Args) -> Result<()> {
 
     let metadata_client = http::metadata_client(&args.common)?;
 
-    let (ver, files) = operations::get_file_infos(
+    let (ver, files) = dump::download::get_file_infos(
         &metadata_client,
         &args.dump_name,
         &args.version_spec.value,
@@ -77,9 +81,9 @@ pub async fn main(args: Args) -> Result<()> {
 
     for (_file_name, file_meta) in files.iter() {
         let res =
-            operations::download_job_file(&download_client, &args.dump_name, &ver, &args.job_name,
-                                          &*args.mirror_url, file_meta, &*args.common.out_dir,
-                                          &temp_dir).await
+            dump::download::download_job_file(&download_client, &args.dump_name, &ver,
+                                              &args.job_name, &*args.mirror_url, file_meta,
+                                              &*args.common.out_dir, &temp_dir).await
                 .with_context(|| format!(
                     "while downloading job file \
                      dump='{dump_name}' \
@@ -109,20 +113,12 @@ pub async fn main(args: Args) -> Result<()> {
 
     tracing::info!(download_ok,
                    download_len,
-                   download_len_str = fmt_bytes(download_len),
+                   download_len_str = fmt::bytes(download_len),
                    existing_ok,
                    existing_len,
-                   existing_len_str = fmt_bytes(existing_len),
+                   existing_len_str = fmt::bytes(existing_len),
                    ?duration,
                    "download command complete");
 
     Ok(())
-}
-
-fn fmt_bytes(len: u64) -> String {
-    human_format::Formatter::new()
-        .with_scales(human_format::Scales::SI())
-        .with_decimals(2)
-        .with_units("B")
-        .format(len as f64)
 }

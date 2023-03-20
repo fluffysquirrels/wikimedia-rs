@@ -1,6 +1,6 @@
 use crate::{
-    article_dump,
     args::CommonArgs,
+    dump::{self, CategoryName},
     Result,
     slug,
     TempDir,
@@ -12,7 +12,7 @@ use tokio::io::AsyncWriteExt;
 
 pub async fn convert_page_to_html(
     common_args: &CommonArgs,
-    page: &article_dump::Page,
+    page: &dump::Page,
 ) -> Result<Vec<u8>> {
 
     let pandoc_start = Instant::now();
@@ -115,4 +115,15 @@ pub async fn convert_page_to_html(
     tracing::debug!(duration = ?pandoc_duration, "Converted wikitext to HTML");
 
     Ok(child_out.stdout)
+}
+
+pub fn parse_categories(
+    wikitext: &str
+) -> Vec<CategoryName> {
+    lazy_regex!(r#"\[\[Category:([^\]]+)\]\]"#).captures_iter(wikitext)
+        .map(|captures| {
+            let name = captures.get(1).expect("capture group 1").as_str().to_string();
+            CategoryName(name)
+        })
+        .collect::<Vec<CategoryName>>()
 }

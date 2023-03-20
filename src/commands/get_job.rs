@@ -1,9 +1,8 @@
 use crate::{
     args::{CommonArgs, DumpNameArg, JsonOutputArg, VersionSpecArg},
+    dump::{self, JobOutput, JobStatus},
     http,
-    operations,
     Result,
-    types::{JobOutput, JobStatus},
 };
 
 /// Get data about a dump version's jobs.
@@ -32,7 +31,7 @@ pub async fn main(args: Args) -> Result<()> {
 
     let client = http::metadata_client(&args.common)?;
 
-    let(ver, ver_status) = operations::get_dump_version_status(&client, &args.dump_name,
+    let(ver, ver_status) = dump::download::get_dump_version_status(&client, &args.dump_name,
                                                                &args.version.value).await?;
 
     let jobs: Vec<(String, JobStatus)> = match args.job_name.as_ref() {

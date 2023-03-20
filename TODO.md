@@ -4,8 +4,12 @@
 
 * Images
 * Title search
-* wiktext to HTML: remove active content
+* wiktext to HTML: remove active content (e.g. JavaScript)
 * Switch to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
+* Delete old files in http_cache.
+    * find http_cache -type f -mtime +5
+* `get-store-page` by wikimedia ID or title.
+* No need to pass --version to get-dump-page with --dump-file or --job-dir.
 
 ## Might do
 
@@ -24,7 +28,8 @@
     * Configurable timeout
 * Categories
     * Parse wikitext for category links e.g. `[[Category:1999 films]]`
-    * Might add field `categories: Vec<CategoryId>` to `article_dump::Page`.
+    * Add field `categories: Vec<CategoryName>` to `dump::Revision`.
+    * Might add categories to chunk page Revision struct.
     * Add index `by_category_id`
         * Key `(category_id,page_id)`
         * Value: `(page_title)` or `()`  
@@ -304,14 +309,38 @@ sudo docker run --rm \
 cd ~/wmd/out/job-multistream; ls -v *index*.txt* \
     | sed --regexp-extended --expression 's/^.*multistream-index([0-9]+).txt-p([0-9]+)p([0-9]+)\.bz2$/\1,\2,\3,\0/'
 ```
-    * Scan indices for title
+    * Scan dump indices for title
 ```
 cd ~/wmd/out/job-multistream
 ls -v *index*.txt*.bz2 \
     | xargs -n1 -I % sh -c 'bzcat % | sed --expression "s/^/%:/"' \
     | egrep --line-buffered 'The Matrix'
 ```
-    * Recompress indices
+    * Recompress multistream indices
+```
+cd ~/wmd/out/job-multistream/
+ls -v *index*.txt*.bz2 \
+    | xargs -n1 -I % -t sh -c 'bzcat % | sed --expression "s/^/%:/"' \
+    | lz4 --compress \
+    > index.txt.lz4
+```
+    * Scan index.txt.lz4 for title
+```
+cd ~/wmd/out/job-multistream
+lz4cat index.txt.lz4 \
+    | egrep 'The Matrix'
+```
+    * Create Category index
+```
+cd ~/wmd/out/job-multistream
+pv index.txt.lz4 \
+    | lz4cat \
+    | egrep '^[^:]+:[0-9]+:[0-9]+:(Category:.*)$' \
+    | sort --field-separator=: --key=5 \
+    | lz4 --compress \
+    > index.categories.lz4
+```
+    * How much space to indices use?
 ```
 cd ~/wmd/out/job-multistream
 du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
@@ -319,11 +348,20 @@ du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
 ```
     * Read starting at substream, seek to ID 30007
 ```
-cd ~/wmd/out/job-multistream;
-tail -c +$(( 174186181 + 1 )) \
+cd ~/wmd/out/job-multistream
+tail -c +$(( 205908774 + 1 )) \
     enwiki-20230301-pages-articles-multistream1.xml-p1p41242.bz2 \
     | bzcat \
     | less +/30007
+```
+    * wmd get-dump-page at substream
+```
+cd ~/wmd/out/job-multistream
+wmd get-dump-page \
+    --dump-file enwiki-20230301-pages-articles-multistream1.xml-p1p41242.bz2 \
+    --compression bz2 --out json-with-body \
+    --seek 205908774 --count 100 \
+    | jq 'select(.id == 30007)'
 ```
     * Disk usage for job-multistream
 ```

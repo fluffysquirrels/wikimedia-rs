@@ -1,46 +1,32 @@
-//! Read a Wikimedia article dump archive.
+//! Read local copies of Wikimedia dump files.
 
-use anyhow::format_err;
+use anyhow::{bail, format_err};
 use clap::{
     builder::PossibleValue,
     ValueEnum,
 };
 use crate::{
     args::{CommonArgs, DumpFileSpecArgs, DumpNameArg, JobNameArg},
+    dump::types::*,
     Error,
     Result,
-    types::{FileMetadata, Version},
     UserRegex,
-    util::{IteratorExtLocal}
+    util::IteratorExtLocal,
+    wikitext,
 };
 use iterator_ext::IteratorExt;
 use quick_xml::events::Event;
-use serde::Serialize;
 use std::{
     borrow::Cow,
     fmt::{self, Display},
     fs::DirEntry,
-    io::{BufRead, BufReader, Error as IoError},
+    io::{BufRead, BufReader, Error as IoError, Seek},
     iter::Iterator,
     path::{Path, PathBuf},
     result::Result as StdResult,
     str::FromStr,
 };
 use tracing::Level;
-
-#[derive(Clone, Debug, Serialize)]
-pub struct Page {
-    pub ns_id: u64,
-    pub id: u64,
-    pub title: String,
-    pub revision: Option<Revision>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct Revision {
-    pub id: u64,
-    pub text: Option<String>,
-}
 
 struct PageIter<R: BufRead> {
     xml_read: quick_xml::reader::Reader<R>,
@@ -91,7 +77,6 @@ impl clap::ValueEnum for Compression {
     }
 }
 
-
 pub fn job_file_path(
     out_dir: &Path,
     dump_name: &DumpNameArg,
@@ -128,11 +113,10 @@ pub fn open_dump_spec(
     let job_dir = file_spec.job_dir.as_ref().map(|p: &PathBuf| p.as_path());
     let pages: Box<dyn Iterator<Item = Result<Page>>> =
         match (dump_file, job_dir) {
-            (Some(_), Some(_)) => return Err(
-                Error::msg("You supplied both --dump-file and --job-dir, but should only \
-                            supply one of these")),
+            (Some(_), Some(_)) => bail!("You supplied both --dump-file and --job-dir, \
+                                         but should only supply one of these"),
             (Some(file), None) => {
-                open_dump_file(file, file_spec.compression)?.boxed_local()
+                open_dump_file(file, file_spec.compression, file_spec.seek.clone())?.boxed_local()
             },
             (None, Some(dir)) => {
                 open_dump_job_by_dir(dir, file_spec.compression,
@@ -140,11 +124,20 @@ pub fn open_dump_spec(
                     .boxed_local()
             }
             (None, None) => {
-                open_dump_job(
-                    &*common.out_dir, &file_spec.dump_name, &file_spec.version.value,
-                    &file_spec.job_name, file_spec.compression,
-                    file_spec.file_name_regex.value.clone()
-                )?.boxed_local()
+                match (file_spec.dump_name.as_ref(),
+                       file_spec.version.as_ref(),
+                       file_spec.job_name.as_ref()) {
+                    (Some(dump), Some(version), Some(job)) =>
+                        open_dump_job(
+                            &*common.out_dir, dump, version,
+                            job, file_spec.compression,
+                            file_spec.file_name_regex.value.clone()
+                        )?.boxed_local(),
+                    _ => bail!("You must supply one of these 3 valid argument sets:\n\
+                                1. `--dump-file`\n\
+                                2. `--job-dir'\n\
+                                3. `--dump`, `--version`, and `--job`"),
+                }
             },
         };
 
@@ -159,13 +152,19 @@ pub fn open_dump_spec(
 pub fn open_dump_file(
     path: &Path,
     compression: Compression,
+    seek: Option<u64>
 ) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
 {
     tracing::debug!(path = %path.display(),
                     ?compression,
-                    "article_dump::open_dump_file");
+                    ?seek,
+                    "dump::open_dump_file");
 
-    let file_read = std::fs::File::open(path)?;
+    let mut file_read = std::fs::File::open(path)?;
+    if let Some(offset) = seek {
+        let _ = file_read.seek(std::io::SeekFrom::Start(offset))?;
+    }
+
     let file_bufread = BufReader::with_capacity(64 * 1024, file_read);
 
     fn into_page_iter<T>(inner: T) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
@@ -224,7 +223,7 @@ pub fn open_dump_job_by_dir(
                     return Ok(None);
                 }
                 macro_rules! file_re_prefix {
-                    () => { r#".*pages.*articles[0-9]+\.xml-p[0-9]+p[0-9]+"# };
+                    () => { r#".*pages.*articles(-multistream)?[0-9]+\.xml-p[0-9]+p[0-9]+"# };
                 }
                 let name_regex = match compression {
                     Compression::Bzip2 => lazy_regex!(file_re_prefix!(), r#"\.bz2$"#),
@@ -255,12 +254,12 @@ pub fn open_dump_job_by_dir(
                         file_count = file_paths.len(),
                         file_paths = ?file_paths.iter().map(|p| p.to_string_lossy())
                                                 .collect::<Vec<Cow<'_, str>>>(),
-                        "article_dump::open_article_dump_job() file paths");
+                        "dump::open_dump_job() file paths");
     }
 
     let pages = file_paths.into_iter()
         .map(move |file_path: PathBuf| { // -> Result<impl Iterator<Item = Result<Page>>>
-            open_dump_file(&*file_path, compression)
+            open_dump_file(&*file_path, compression, None /* seek */)
         })
         .try_flatten_results(); // : impl Iterator<Item = Result<Page>>
 
@@ -323,6 +322,12 @@ impl<R: BufRead> Iterator for PageIter<R> {
                                 revision = Some(Revision {
                                     id: try_iter!(revision_id.ok_or(
                                         anyhow::Error::msg("No revision id"))),
+                                    categories:
+                                        match revision_text {
+                                            None => vec![],
+                                            Some(ref text) =>
+                                                wikitext::parse_categories(text.as_str()),
+                                        },
                                     text: revision_text,
                                 });
                             },

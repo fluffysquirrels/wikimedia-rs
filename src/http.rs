@@ -1,6 +1,6 @@
 //! Shared code for making HTTP requests
 
-use anyhow::Context;
+use anyhow::{bail, Context, format_err};
 use crate::{
     args,
     Result,
@@ -130,9 +130,9 @@ fn cache(
     std::fs::create_dir_all(&*cache_path)
         .context("while creating HTTP cache directory")?;
     let cache_path_string = cache_path.to_str().ok_or_else(
-                                || anyhow::Error::msg(format!(
-                                      "Couldn't convert HTTP cache path '{path}' to a String",
-                                      path = args.http_cache_path().display())))?.to_string();
+                                || format_err!(
+                                       "Couldn't convert HTTP cache path '{path}' to a String",
+                                       path = args.http_cache_path().display()))?.to_string();
 
     Ok(http_cache_reqwest::Cache(
            http_cache_reqwest::HttpCache {
@@ -178,9 +178,8 @@ pub async fn download_file(
                         "http::download_file() response HTTP status");
 
         if !download_res_code.0.is_success() {
-            return Err(anyhow::Error::msg(
-                format!("HTTP response error code \
-                         response_code={download_res_code:?}")));
+            bail!("HTTP response error code \
+                   response_code={download_res_code:?}");
         }
 
         let mut bytes_stream = download_res.bytes_stream();
@@ -288,9 +287,8 @@ pub async fn fetch_text(
         }
 
         if !res_code.0.is_success() {
-            return Err(anyhow::Error::msg(
-                format!("HTTP response code error \
-                         response_code={res_code:?}")));
+            bail!("HTTP response code error \
+                   response_code={res_code:?}");
         }
 
         let duration = start_time.elapsed();

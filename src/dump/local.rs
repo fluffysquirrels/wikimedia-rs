@@ -325,7 +325,7 @@ impl<R: BufRead> Iterator for PageIter<R> {
                                 }
                                 revision = Some(Revision {
                                     id: try_iter!(revision_id.ok_or(
-                                        anyhow::Error::msg("No revision id"))),
+                                            format_err!("No revision id"))),
                                     categories:
                                         match revision_text {
                                             None => vec![],
@@ -338,11 +338,11 @@ impl<R: BufRead> Iterator for PageIter<R> {
                             Event::End(b) if b.name().as_ref() == b"page" => {
                                 let page = Page {
                                     title: try_iter!(page_title.ok_or(
-                                        anyhow::Error::msg("No page title"))),
+                                        format_err!("No page title"))),
                                     id: try_iter!(page_id.ok_or(
-                                        anyhow::Error::msg("No page id"))),
+                                        format_err!("No page id"))),
                                     ns_id: try_iter!(page_ns_id.ok_or(
-                                        anyhow::Error::msg("No page ns"))),
+                                        format_err!("No page ns"))),
                                     revision: revision,
                                 };
                                 return Some(Ok(page));

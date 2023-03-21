@@ -1,3 +1,4 @@
+use anyhow::{bail, format_err};
 use crate::{
     args::CommonArgs,
     dump::{self, CategoryName},
@@ -87,7 +88,7 @@ pub async fn convert_page_to_html(
         .spawn()?;
 
     let mut child_stdin =
-        child.stdin.take().ok_or(anyhow::Error::msg("Failed to open stdin"))?;
+        child.stdin.take().ok_or(format_err!("Failed to open stdin"))?;
 
     let wikitext = page.revision.as_ref()
         .and_then(|r| r.text.as_ref())
@@ -104,12 +105,11 @@ pub async fn convert_page_to_html(
     let child_out = child_out.await??;
     let pandoc_duration = pandoc_start.elapsed();
     if !child_out.status.success() {
-        return Err(anyhow::Error::msg(
-            format!("Error exit code running pandoc code={code} stdout='{stdout}' \
-                     stderr='{stderr}'",
-                    code = child_out.status,
-                    stdout = String::from_utf8_lossy(&child_out.stdout),
-                    stderr = String::from_utf8_lossy(&child_out.stderr))));
+        bail!("Error exit code running pandoc code={code} stdout='{stdout}' \
+               stderr='{stderr}'",
+              code = child_out.status,
+              stdout = String::from_utf8_lossy(&child_out.stdout),
+              stderr = String::from_utf8_lossy(&child_out.stderr));
     }
 
     tracing::debug!(duration = ?pandoc_duration, "Converted wikitext to HTML");

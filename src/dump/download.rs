@@ -1,6 +1,6 @@
 //! Download data from Wikimedia dumps server and mirrors.
 
-use anyhow::{Context, format_err};
+use anyhow::{bail, Context, format_err};
 use crate::{
     args::{DumpNameArg, JobNameArg},
     dump::{self, Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
@@ -147,8 +147,8 @@ pub async fn get_dump_version_status(
         VersionSpec::Latest => {
             let mut vers = get_dump_versions(&client, dump_name).await?;
             if vers.is_empty() {
-                return Err(anyhow::Error::msg(format!("No versions found for dump {dump_name}",
-                                                      dump_name = dump_name.value)));
+                bail!("No versions found for dump {dump_name}",
+                      dump_name = dump_name.value);
             }
             vers.sort();
             // Re-bind as immutable.
@@ -183,11 +183,11 @@ pub async fn get_job_status(
     let (ver, ver_status) = get_dump_version_status(&client, &dump_name, version_spec).await?;
 
     let Some(job_status) = ver_status.jobs.get(&job_name.value) else {
-        return Err(anyhow::Error::msg(format!("No status found for job dump_name={dump_name} \
-                                               version={ver} job_name={job_name}",
-                                              dump_name = dump_name.value,
-                                              ver = ver.0,
-                                              job_name = job_name.value)));
+        bail!("No status found for job dump_name={dump_name} \
+               version={ver} job_name={job_name}",
+              dump_name = dump_name.value,
+              ver = ver.0,
+              job_name = job_name.value);
     };
 
     if tracing::enabled!(Level::TRACE) {
@@ -283,12 +283,11 @@ pub async fn download_job_file(
     let download_result = http::download_file(&client, download_request, &*temp_file_path).await?;
 
     if download_result.stats.len != expected_len {
-        return Err(anyhow::Error::msg(format!(
-            "Download job file was the wrong size \
-             url='{url}' \
-             expected_len={expected_len:?} \
-             file_len={file_len:?}",
-            file_len = download_result.stats.len)));
+        bail!("Download job file was the wrong size \
+               url='{url}' \
+               expected_len={expected_len:?} \
+               file_len={file_len:?}",
+              file_len = download_result.stats.len);
     }
 
     match file_meta.sha1.as_ref() {
@@ -296,10 +295,9 @@ pub async fn download_job_file(
         Some(expected_sha1) => {
             let expected_sha1 = expected_sha1.to_lowercase();
             if download_result.sha1 != expected_sha1 {
-                return Err(anyhow::Error::msg(
-                    format!("Bad SHA1 hash for downloaded job file url='{url}' \
-                             expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
-                            computed_sha1 = download_result.sha1)));
+                bail!("Bad SHA1 hash for downloaded job file url='{url}' \
+                       expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
+                      computed_sha1 = download_result.sha1);
             }
 
             tracing::debug!(sha1 = expected_sha1,
@@ -335,25 +333,25 @@ fn validate_file_relative_url(url: &str) -> Result<()> {
     // Wrap everyting in a closure to add context with anyhow.
     (|| -> Result<()> {
         if url == "" {
-            return Err(anyhow::Error::msg("URL was the empty string"));
+            bail!("URL was the empty string");
         }
 
         let mut rel_segments = url.split('/');
         let first = rel_segments.next().expect("split always returns at least one segment");
 
         if first.len() > 0 {
-            return Err(anyhow::Error::msg("Path missing initial '/'"));
+            bail!("Path missing initial '/'");
         }
 
         for segment in rel_segments {
             // Wrap segment validation in a closure to add context with anyhow.
             (|| -> Result<()> {
                 if !lazy_regex!(r"^[-a-z_0-9A-Z.]+$").is_match(segment) {
-                    return Err(anyhow::Error::msg("Path segment didn't match regex"));
+                    bail!("Path segment didn't match regex");
                 }
 
                 if segment == "." || segment == ".." {
-                    return Err(anyhow::Error::msg("Path segment was '.' or '..'"));
+                    bail!("Path segment was '.' or '..'");
                 }
 
                 Ok(())
@@ -398,10 +396,9 @@ async fn check_existing_file(
 
         // Check existing file's metdata
         if !existing_meta.is_file() {
-            return Err(anyhow::Error::msg(format!(
-                 "Found an item that's not a file. \
-                  metadata.file_type()={file_type:?}",
-                file_type = existing_meta.file_type())));
+            bail!("Found an item that's not a file. \
+                   metadata.file_type()={file_type:?}",
+                  file_type = existing_meta.file_type());
         }
 
         // Check existing file length

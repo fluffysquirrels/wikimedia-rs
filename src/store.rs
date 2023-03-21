@@ -1,4 +1,4 @@
-use anyhow::{ensure, format_err};
+use anyhow::{bail, ensure, format_err};
 use crate::{
     dump,
     fbs::wikimedia as wm,
@@ -119,8 +119,7 @@ impl FromStr for StorePageId {
     fn from_str(s: &str) -> Result<Self> {
         let segments = s.split('.').map(|s| s.to_string()).collect::<Vec<String>>();
         if segments.len() != 2 {
-            return Err(anyhow::Error::msg(
-                "StorePageId::from_str expects 2 integers separated by a '.'"));
+            bail!("StorePageId::from_str expects 2 integers separated by a '.'");
         }
 
         Ok(StorePageId {
@@ -144,7 +143,7 @@ impl TryFrom<&[u8]> for StorePageId {
 
     fn try_from(b: &[u8]) -> Result<StorePageId> {
         if b.len() != 16 {
-            return Err(anyhow::Error::msg("StorePageId::try_from: input.len() != 16"));
+            bail!("StorePageId::try_from: input.len() != 16");
         }
 
         Ok(StorePageId{

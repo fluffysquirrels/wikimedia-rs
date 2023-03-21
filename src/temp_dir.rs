@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{bail, Context};
 use crate::Result;
 use hex::ToHex;
 use std::path::{Path, PathBuf};
@@ -35,7 +35,7 @@ impl TempDir {
 
     pub fn path(&self) -> Result<&Path> {
         if self.cleaned_up {
-            Err(anyhow::Error::msg("TempDir already cleaned up."))
+            bail!("TempDir already cleaned up.")
         } else {
             Ok(&*self.path)
         }

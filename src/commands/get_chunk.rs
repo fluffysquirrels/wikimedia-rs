@@ -1,3 +1,4 @@
+use anyhow::format_err;
 use crate::{
     args::CommonArgs,
     store,
@@ -31,7 +32,7 @@ pub async fn main(args: Args) -> Result<()> {
 
     for chunk_id in chunk_ids.into_iter() {
         let chunk_meta = store.get_chunk_meta_by_chunk_id(chunk_id)?
-                              .ok_or_else(|| anyhow::Error::msg("ChunkMeta not found by ChunkId"))?;
+                              .ok_or_else(|| format_err!("ChunkMeta not found by ChunkId"))?;
 
         serde_json::to_writer_pretty(&std::io::stdout(), &chunk_meta)?;
         println!();

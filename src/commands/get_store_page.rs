@@ -1,4 +1,4 @@
-use anyhow::format_err;
+use anyhow::{bail, format_err};
 use crate::{
     args::CommonArgs,
     dump,
@@ -42,9 +42,9 @@ pub async fn main(args: Args) -> Result<()> {
     let store = store::Options::from_common_args(&args.common).build_store()?;
 
     match (args.store_page_id, args.chunk_id) {
-        (Some(_), Some(_)) => return Err(anyhow::Error::msg(
+        (Some(_), Some(_)) => bail!(
             "you passed both --store-page-id and --chunk-id arguments, \
-             you must use only one of these.")),
+             you must use only one of these."),
         (Some(store_page_id), None) => {
             let page = store.get_page_by_store_id(store_page_id)?
                             .ok_or_else(|| format_err!("page not found by id."))?;
@@ -80,8 +80,8 @@ pub async fn main(args: Args) -> Result<()> {
 
 fn check_output_type_not_html(output_type: OutputType) -> Result<()> {
     match output_type {
-        OutputType::Html => Err(anyhow::Error::msg(
-            "Cannot use --out Html if more than one page is returned.")),
+        OutputType::Html => bail!(
+            "Cannot use --out Html if more than one page might be returned."),
         _ => Ok(())
     }
 }

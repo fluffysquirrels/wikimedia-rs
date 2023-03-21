@@ -14,16 +14,8 @@
 ## Might do
 
 ### Features
-* Human readable numbers in logs: e.g. bytes, bytes / second
-    * Dream would be:
-        * Custom tuple structs for these
-        * Formatted as pretty for console logging
-        * For bunyan JSON logging log a struct as a JSON value (with
-          valuable) with both a string and a number.
-        * Then can jq the human readable text for output, but filter
-          or aggregate the raw numbers.
-    * Valuable support for tracing-bunyan-formatter:  https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
-
+* Upstream Valuable support for tracing-bunyan-formatter:  
+  https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
 * Performance
     * get-store-page --out none takes 491s.
 * Improve downloads
@@ -145,6 +137,10 @@
 * Platforms tested
 * Architecture
 * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
+```
+CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
+wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
+```
 * Document shell completion script setup.
 ```
 bin/generate-completions && exec zsh
@@ -152,8 +148,7 @@ bin/generate-completions && exec zsh
 * Add brief syntax hints for `--file-name-regex`.
 
 ### Code quality
-* Rename directory `_page_store` to `store`
-* Put downloaded files under `dumps`, remove `_` prefix from directories
+* Put Hashes in a tuple struct with a custom formatter.
 * Split `store.rs`
 * Fork flatbuffers crate, add method `Vector::loc(&self)`?
     * Upstream?

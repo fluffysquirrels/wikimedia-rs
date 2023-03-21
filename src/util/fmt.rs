@@ -65,6 +65,15 @@ impl Structable for Bytes {
     }
 }
 
+impl serde::Serialize for Bytes {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where S: serde::Serializer
+    {
+        let serializable = valuable_serde::Serializable::new(self);
+        serializable.serialize(serializer)
+    }
+}
+
 impl Debug for ByteRate {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "ByteRate({num:.0} = {pretty})", num = self.0, pretty = bytes_per_second(self.0))

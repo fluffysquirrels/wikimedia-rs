@@ -5,6 +5,7 @@ use crate::{
     Result,
     slug,
     TempDir,
+    util::fmt::{Bytes, Duration},
 };
 use flatbuffers::{self as fb, FlatBufferBuilder, WIPOffset};
 use serde::Serialize;
@@ -17,9 +18,10 @@ use std::{
     path::PathBuf,
     result::Result as StdResult,
     str::FromStr,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tracing::Level;
+use valuable::Valuable;
 
 pub struct Options {
     pub path: PathBuf,
@@ -55,22 +57,22 @@ pub struct MappedPage {
     loc: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Valuable)]
 pub struct ChunkMeta {
-    bytes_len: u64,
+    bytes_len: Bytes,
     pages_len: u64,
     path: PathBuf,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 struct ImportChunkResult {
     chunk_meta: ChunkMeta,
     _duration: Duration,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct ImportResult {
-    pub bytes_total: u64,
+    pub bytes_total: Bytes,
     pub chunks_len: u64,
     pub duration: Duration,
     pub pages_total: u64,
@@ -168,7 +170,7 @@ impl StorePageId {
 impl Options {
     pub fn from_common_args(common_args: &crate::args::CommonArgs) -> Options {
         Options {
-            path: common_args.page_store_path(),
+            path: common_args.store_path(),
             max_chunk_len: 10_000_000, // 10 MB
         }
     }
@@ -233,7 +235,7 @@ impl Store {
 
             tracing::debug!(%next_chunk_id,
                             sled_db.trees = ?tree_names,
-                            sled_db.size_on_disk = sled_db.size_on_disk()?,
+                            sled_db.size_on_disk = Bytes(sled_db.size_on_disk()?).as_value(),
                             sled_db.was_recovered = sled_db.was_recovered(),
                             "Store::new() loaded");
         }
@@ -291,19 +293,19 @@ impl Store {
 
         while pages.peek().is_some() {
             let res = self.import_chunk(&mut pages)?;
-            bytes_total += res.chunk_meta.bytes_len;
+            bytes_total += res.chunk_meta.bytes_len.0;
             pages_total += res.chunk_meta.pages_len;
             chunks_len += 1;
         };
 
         let res = ImportResult {
-            bytes_total,
+            bytes_total: Bytes(bytes_total),
             chunks_len,
-            duration: start.elapsed(),
+            duration: Duration(start.elapsed()),
             pages_total,
         };
 
-        tracing::debug!(?res,
+        tracing::debug!(res = res.as_value(),
                         "Import done");
 
         Ok(res)
@@ -407,14 +409,14 @@ impl Store {
 
         let res = ImportChunkResult {
             chunk_meta: ChunkMeta {
-                bytes_len: bytes_len.try_into().expect("Convert usize to u64"),
+                bytes_len: Bytes(bytes_len.try_into().expect("Convert usize to u64")),
                 pages_len: pages_len.try_into().expect("Convert usize to u64"),
                 path: fb_out_path,
             },
-            _duration: start.elapsed(),
+            _duration: Duration(start.elapsed()),
         };
 
-        tracing::debug!(?res,
+        tracing::debug!(res = res.as_value(),
                         "Chunk imported");
 
         Ok(res)
@@ -618,7 +620,7 @@ impl MappedChunk {
         let chunk_fb = unsafe { self.chunk_fb_unchecked() };
 
         ChunkMeta {
-            bytes_len: self.mmap.len().try_into().expect("usize as u64"),
+            bytes_len: Bytes(self.mmap.len().try_into().expect("usize as u64")),
             pages_len: chunk_fb.pages().len().try_into().expect("usize as u64"),
             path: self.path.clone(),
         }

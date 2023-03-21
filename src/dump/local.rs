@@ -30,6 +30,7 @@ use std::{
     str::FromStr,
 };
 use tracing::Level;
+use valuable::Valuable;
 
 struct PageIter<R: BufRead> {
     xml_read: quick_xml::reader::Reader<R>,
@@ -101,7 +102,7 @@ pub fn job_path(
     version: &Version,
     job_name: &JobNameArg,
 ) -> PathBuf {
-    out_dir.join(format!("{dump_name}/{version}/{job_name}",
+    out_dir.join(format!("dumps/{dump_name}/{version}/{job_name}",
                          dump_name = &*dump_name.value,
                          version = version.0,
                          job_name = &*job_name.value))
@@ -253,7 +254,7 @@ pub fn open_dump_job_by_dir(
                                           { Ok(curr + len?) })?;
 
     if tracing::enabled!(Level::DEBUG) {
-        tracing::debug!(files_total_len = ?Bytes(files_total_len),
+        tracing::debug!(files_total_len = Bytes(files_total_len).as_value(),
                         file_count = file_paths.len(),
                         file_paths = ?file_paths.iter().map(|p| p.to_string_lossy())
                                                 .collect::<Vec<Cow<'_, str>>>(),

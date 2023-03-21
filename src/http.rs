@@ -10,29 +10,77 @@ use encoding_rs::{Encoding, UTF_8};
 use sha1::{Digest, Sha1};
 use std::{
     convert::TryFrom,
+    fmt::Debug,
     path::Path,
     time::{Duration, Instant},
 };
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
 use tracing::Level;
+use valuable::{Fields, NamedField, NamedValues, Structable, StructDef, Valuable, Value, Visit};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct DownloadFileResult {
     /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
     pub sha1: String,
     pub stats: TransferStats,
-    pub response_code: reqwest::StatusCode,
+    pub response_code: StatusCode,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct FetchTextResult {
     pub response_body: String,
-    pub response_code: reqwest::StatusCode,
+    pub response_code: StatusCode,
     pub stats: TransferStats,
 }
 
+#[derive(Clone, Copy)]
+pub struct StatusCode(pub reqwest::StatusCode);
+
 pub type Client = reqwest_middleware::ClientWithMiddleware;
+
+impl Debug for StatusCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "StatusCode({code_int} = '{code_str}')",
+               code_int = self.as_u16(),
+               code_str = self.as_str())
+    }
+}
+
+impl StatusCode {
+    const FIELDS: &[NamedField<'static>] = &[
+        NamedField::new("int"),
+        NamedField::new("str"),
+    ];
+
+    pub fn as_u16(&self) -> u16 {
+        self.0.as_u16()
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        self.0.canonical_reason().unwrap_or("")
+    }
+}
+
+impl Valuable for StatusCode {
+    fn as_value(&self) -> Value<'_> {
+        Value::Structable(self)
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        visit.visit_named_fields(
+            &NamedValues::new(
+                Self::FIELDS,
+                &[Value::U16(self.as_u16()),
+                  Value::String(self.as_str())]))
+    }
+}
+
+impl Structable for StatusCode {
+    fn definition(&self) -> StructDef<'_> {
+        StructDef::new_static("StatusCode", Fields::Named(Self::FIELDS))
+    }
+}
 
 /// Constructs a `Client` suitable for fetching metadata.
 ///
@@ -123,20 +171,16 @@ pub async fn download_file(
             .with_context(|| "opening output file for writing")?;
 
         let download_res = client.execute(request).await?;
-        let download_res_code = download_res.status();
-        let download_res_code_int = download_res_code.as_u16();
-        let download_res_code_str = download_res_code.canonical_reason().unwrap_or("");
+        let download_res_code = StatusCode(download_res.status());
         tracing::debug!(url = %url.clone(),
                         method = %method.clone(),
-                        response_code = download_res_code_int,
-                        response_code_str = download_res_code_str,
+                        response_code = download_res_code.as_value(),
                         "http::download_file() response HTTP status");
 
-        if !download_res_code.is_success() {
+        if !download_res_code.0.is_success() {
             return Err(anyhow::Error::msg(
                 format!("HTTP response error code \
-                         response_code={download_res_code_int} \
-                         response_code_str='{download_res_code_str}'")));
+                         response_code={download_res_code:?}")));
         }
 
         let mut bytes_stream = download_res.bytes_stream();
@@ -171,7 +215,7 @@ pub async fn download_file(
 
         tracing::debug!(url = %url.clone(),
                         method = %method.clone(),
-                        stats = ?res.stats.clone(),
+                        res = res.as_value(),
                         "http::download_file() done");
 
         Ok(res)
@@ -205,13 +249,10 @@ pub async fn fetch_text(
 
         let response = client.execute(request).await?;
 
-        let res_code = response.status();
-        let res_code_int = res_code.as_u16();
-        let res_code_str = res_code.canonical_reason().unwrap_or("");
+        let res_code = StatusCode(response.status());
         tracing::debug!(url = %url.clone(),
                         method = %method.clone(),
-                        response_code = res_code_int,
-                        response_code_str = res_code_str,
+                        response_code = res_code.as_value(),
                         "HTTP response headers");
 
         // Text decoding copied from reqwest::Response::text(),
@@ -246,11 +287,10 @@ pub async fn fetch_text(
                             "HTTP response body");
         }
 
-        if !res_code.is_success() {
+        if !res_code.0.is_success() {
             return Err(anyhow::Error::msg(
                 format!("HTTP response code error \
-                         response_code={res_code_int} \
-                         response_code_str={res_code_str}")));
+                         response_code={res_code:?}")));
         }
 
         let duration = start_time.elapsed();
@@ -266,7 +306,9 @@ pub async fn fetch_text(
         };
 
         tracing::info!(%url,
-                       stats = ?res.stats.clone(),
+                       %method,
+                       res.code = res_code.as_value(),
+                       res.stats = res.stats.as_value(),
                        "http::fetch_text() complete");
 
         Ok(res)

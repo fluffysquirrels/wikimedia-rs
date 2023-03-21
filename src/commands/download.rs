@@ -8,7 +8,10 @@ use crate::{
     http,
     Result,
     TempDir,
-    util::fmt::{Bytes, TransferStats},
+    util::{
+        self,
+        fmt::{Bytes, TransferStats},
+    },
 };
 use std::time::Instant;
 use valuable::Valuable;
@@ -116,7 +119,7 @@ pub async fn main(args: Args) -> Result<()> {
                    download_stats = TransferStats::new(Bytes(download_len), duration).as_value(),
                    existing_ok,
                    existing_stats = TransferStats::new(Bytes(existing_len), duration).as_value(),
-                   ?duration,
+                   duration = util::fmt::Duration(duration).as_value(),
                    "download command complete");
 
     Ok(())

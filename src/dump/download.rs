@@ -17,6 +17,7 @@ use std::{
 };
 use tokio_stream::StreamExt;
 use tracing::Level;
+use valuable::Valuable;
 
 #[derive(Clone, Debug)]
 pub enum ExistingFileStatus {
@@ -274,7 +275,7 @@ pub async fn download_job_file(
     tracing::info!(
         url,
         out_path = %file_out_path.display(),
-        ?expected_len,
+        expected_len = expected_len.as_value(),
         "download_job_file starting download");
 
     let download_request = client.get(url.clone())
@@ -321,7 +322,7 @@ pub async fn download_job_file(
 
     tracing::info!(url,
                    out_path = %file_out_path.display(),
-                   stats = ?download_result.stats.clone(),
+                   stats = download_result.stats.as_value(),
                    "download_job_file download complete, file OK");
 
     Ok(DownloadJobFileResult {
@@ -408,8 +409,8 @@ async fn check_existing_file(
         if expected_len != existing_len {
             // Existing file length does not match expected.
             tracing::warn!(path = %path.display(),
-                           ?existing_len,
-                           ?expected_len,
+                           existing_len = existing_len.as_value(),
+                           expected_len = expected_len.as_value(),
                            url,
                            "Deleting existing file that was the wrong size");
 
@@ -452,7 +453,7 @@ async fn check_existing_file(
             return Ok(ExistingFileStatus::FileOk);
         } else {
             // Existing file's SHA1 hash was incorrect, delete it.
-            tracing::warn!(file_len = ?expected_len,
+            tracing::warn!(file_len = expected_len.as_value(),
                            file_path = %path.display(),
                            existing_sha1,
                            expected_sha1,

@@ -96,7 +96,7 @@ pub struct DumpFileSpecArgs {
     #[arg(long, value_enum, default_value_t = Compression::Bzip2)]
     pub compression: Compression,
 
-    /// Maximum count of pages to import. No limit if omitted.
+    /// Maximum count of pages operate on. No limit if omitted.
     #[arg(long)]
     pub count: Option<usize>,
 
@@ -125,8 +125,8 @@ impl CommonArgs {
         self.out_dir.join("http_cache")
     }
 
-    pub fn page_store_path(&self) -> PathBuf {
-        self.out_dir.join("page_store")
+    pub fn store_path(&self) -> PathBuf {
+        self.out_dir.join("store")
     }
 }
 

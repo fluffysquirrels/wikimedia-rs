@@ -2770,8 +2770,7 @@ dependencies = [
 [[package]]
 name = "tracing-bunyan-formatter"
 version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78fa7c4b548e5c79a0300396f36f175da001e9933dfb5960b326db25fddbaee7"
+source = "git+https://github.com/fluffysquirrels/tracing-bunyan-formatter?branch=valuable#2d1f9b87006b050005dd7d953ef19e5917500da6"
 dependencies = [
  "ahash",
  "gethostname",
@@ -2783,6 +2782,8 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-subscriber",
+ "valuable",
+ "valuable-serde",
 ]
 
 [[package]]
@@ -2925,6 +2926,30 @@ name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
+dependencies = [
+ "valuable-derive",
+]
+
+[[package]]
+name = "valuable-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d44690c645190cfce32f91a1582281654b2338c6073fa250b0949fd25c55b32"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "valuable-serde"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5285cfff30cdabe26626736a54d989687dd9cab84f51f4048b61d6d0ae8b0907"
+dependencies = [
+ "serde",
+ "valuable",
+]
 
 [[package]]
 name = "value-bag"
@@ -3122,6 +3147,8 @@ dependencies = [
  "tracing",
  "tracing-bunyan-formatter",
  "tracing-subscriber",
+ "valuable",
+ "valuable-serde",
 ]
 
 [[package]]

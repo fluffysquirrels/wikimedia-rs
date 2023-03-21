@@ -1,2 +1,4 @@
 [build]
-rustflags = ["-C", "target-cpu=native", "-C", "debug-assertions"]
+rustflags = ["-C", "target-cpu=native",
+             "-C", "debug-assertions",
+             "--cfg", "tracing_unstable"]

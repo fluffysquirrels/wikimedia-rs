@@ -44,10 +44,12 @@ pub struct DumpNameArg {
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct VersionSpecArg {
-    /// The dump version to use. If omitted the latest available version is used.
+    /// The dump version to use. If omitted tries to read the
+    /// environment variable "WMD_VERSION", then falls back to the
+    /// default "latest".
     ///
     /// The value must be 8 numerical digits (e.g. "20230301") or the string "latest".
-    #[arg(id = "version", long = "version", default_value = "latest")]
+    #[arg(id = "version", long = "version", default_value = "latest", env = "WMD_VERSION")]
     pub value: VersionSpec,
 }
 
@@ -69,7 +71,9 @@ pub struct DumpFileSpecArgs {
     /// The dump version to use.
     ///
     /// The value must be 8 numerical digits (e.g. "20230301").
-    #[arg(long)]
+    ///
+    /// If not present tries to read the environment variable `WMD_VERSION`.
+    #[arg(long, env = "WMD_VERSION")]
     pub version: Option<Version>,
 
     #[clap(flatten)]

@@ -43,12 +43,15 @@ sled = { version = "0.34.7", default-features = false }
 tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "time", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["io"] }
-tracing = "0.1.37"
-tracing-bunyan-formatter = "0.3.6"
+tracing = { version = "0.1.37", features = ["valuable"] }
+tracing-bunyan-formatter = { version = "0.3.6", features = ["valuable"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json", "time"] }
+valuable = { version = "0.1.0", features = ["derive"] }
+valuable-serde = "0.1.0"
 
 [profile.release]
 # strip = true
 
 [patch.crates-io]
 flatbuffers = { git = "https://github.com/fluffysquirrels/flatbuffers", branch = "rust_vector_loc_method" }
+tracing-bunyan-formatter = { git = "https://github.com/fluffysquirrels/tracing-bunyan-formatter", branch = "valuable" }

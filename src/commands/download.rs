@@ -11,6 +11,7 @@ use crate::{
     util::fmt::{Bytes, TransferStats},
 };
 use std::time::Instant;
+use valuable::Valuable;
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -112,9 +113,9 @@ pub async fn main(args: Args) -> Result<()> {
     let duration = start_time.elapsed();
 
     tracing::info!(download_ok,
-                   download_stats = ?TransferStats::new(Bytes(download_len), duration),
+                   download_stats = TransferStats::new(Bytes(download_len), duration).as_value(),
                    existing_ok,
-                   existing_stats = ?TransferStats::new(Bytes(existing_len), duration),
+                   existing_stats = TransferStats::new(Bytes(existing_len), duration).as_value(),
                    ?duration,
                    "download command complete");
 

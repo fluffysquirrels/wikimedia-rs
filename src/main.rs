@@ -27,7 +27,7 @@ use crate::{
     temp_dir::TempDir,
     user_regex::UserRegex,
 };
-
+use valuable::Valuable;
 use tracing::Level;
 
 type Error = anyhow::Error;
@@ -92,9 +92,9 @@ async fn main() -> Result<()> {
         Command::Web(cmd_args) => commands::web::main(cmd_args).await?,
     };
 
-    let duration = start_time.elapsed();
+    let duration = util::fmt::Duration(start_time.elapsed());
 
-    tracing::debug!(?duration, "wmd::main() returning");
+    tracing::debug!(duration = duration.as_value(), "wmd::main() returning");
 
     Ok(())
 }

@@ -1,7 +1,8 @@
 use std::{
     fmt::{Debug, Display},
-    time::Duration,
+    time::Duration as StdDuration,
 };
+use valuable::{Fields, NamedField, NamedValues, Structable, StructDef, Valuable, Value, Visit};
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Bytes(pub u64);
@@ -9,7 +10,7 @@ pub struct Bytes(pub u64);
 #[derive(Clone, Copy)]
 pub struct ByteRate(pub f64);
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Valuable)]
 pub struct TransferStats {
     /// Transfered file size in bytes.
     pub len: Bytes,
@@ -21,6 +22,9 @@ pub struct TransferStats {
     pub rate: ByteRate,
 }
 
+#[derive(Clone)]
+pub struct Duration(pub StdDuration);
+
 impl Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Bytes({num} = {pretty})", num = self.0, pretty = bytes(self.0))
@@ -30,6 +34,34 @@ impl Debug for Bytes {
 impl Display for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(&*bytes(self.0))
+    }
+}
+
+impl Bytes {
+    const FIELDS: &[NamedField<'static>] = &[
+        NamedField::new("int"),
+        NamedField::new("str"),
+    ];
+}
+
+impl Valuable for Bytes {
+    fn as_value(&self) -> Value<'_> {
+        Value::Structable(self)
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        let s = bytes(self.0);
+        visit.visit_named_fields(
+            &NamedValues::new(
+                Self::FIELDS,
+                &[Value::U64(self.0),
+                  Value::String(&*s)]))
+    }
+}
+
+impl Structable for Bytes {
+    fn definition(&self) -> StructDef<'_> {
+        StructDef::new_static("Bytes", Fields::Named(Self::FIELDS))
     }
 }
 
@@ -46,7 +78,35 @@ impl Display for ByteRate {
 }
 
 impl ByteRate {
-    pub fn new(bytes: Bytes, duration: Duration) -> ByteRate {
+    const FIELDS: &[NamedField<'static>] = &[
+        NamedField::new("float"),
+        NamedField::new("str"),
+    ];
+}
+
+impl Valuable for ByteRate {
+    fn as_value(&self) -> Value<'_> {
+        Value::Structable(self)
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        let s = bytes_per_second(self.0);
+        visit.visit_named_fields(
+            &NamedValues::new(
+                Self::FIELDS,
+                &[Value::F64(self.0),
+                  Value::String(&*s)]))
+    }
+}
+
+impl Structable for ByteRate {
+    fn definition(&self) -> StructDef<'_> {
+        StructDef::new_static("ByteRate", Fields::Named(Self::FIELDS))
+    }
+}
+
+impl ByteRate {
+    pub fn new(bytes: Bytes, duration: StdDuration) -> ByteRate {
         let secs = duration.as_secs_f64();
         let rate = if secs.abs() < f64::EPSILON {
             0.
@@ -59,22 +119,48 @@ impl ByteRate {
 }
 
 impl TransferStats {
-    pub fn new(len: Bytes, duration: Duration) -> TransferStats {
+    pub fn new(len: Bytes, duration: StdDuration) -> TransferStats {
         TransferStats {
             len,
-            duration,
+            duration: Duration(duration),
             rate: ByteRate::new(len, duration),
         }
     }
 }
 
-impl Debug for TransferStats {
+impl Debug for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.debug_struct("TransferStats")
-         .field("len", &self.len)
-         .field("duration", &format!("{:.2?}", self.duration))
-         .field("rate", &self.rate)
-         .finish()
+        write!(f, "{:.2?}", self.0)
+    }
+}
+
+impl Duration {
+    const FIELDS: &[NamedField<'static>] = &[
+        NamedField::new("secs"),
+        NamedField::new("nanos"),
+        NamedField::new("str"),
+    ];
+}
+
+impl Valuable for Duration {
+    fn as_value(&self) -> Value<'_> {
+        Value::Structable(self)
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        let s = format!("{:?}", self);
+        visit.visit_named_fields(
+            &NamedValues::new(
+                Self::FIELDS,
+                &[Value::U64(self.0.as_secs()),
+                  Value::U32(self.0.subsec_nanos()),
+                  Value::String(&*s)]))
+    }
+}
+
+impl Structable for Duration {
+    fn definition(&self) -> StructDef<'_> {
+        StructDef::new_static("Duration", Fields::Named(Self::FIELDS))
     }
 }
 

@@ -18,7 +18,7 @@ pub struct CommonArgs {
     ///
     /// The dump files will be placed in a child directory of this.
     /// With `--out-dir` set to `./out`, dump file paths will be like:
-    /// `./out/enwiki/20230301/metacurrentdumprecombine/enwiki-20230301-pages-articles.xml.bz2`
+    /// `./out/dumps/enwiki/20230301/articlesdump/enwiki-20230301-pages-articles.xml.bz2`
     ///
     /// If not present tries to read the environment variable `WMD_OUT_DIR`.
     #[arg(long, env = "WMD_OUT_DIR")]

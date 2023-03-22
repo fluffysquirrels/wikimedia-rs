@@ -1,13 +1,16 @@
 use anyhow::{bail, ensure, format_err};
 use crate::{
-    dump,
+    dump::{self, local::JobFiles},
+    Error,
     fbs::wikimedia as wm,
     Result,
     slug,
     TempDir,
-    util::fmt::{Bytes, Duration},
+    util::fmt::{ByteRate, Bytes, Duration},
 };
+use crossbeam_utils::CachePadded;
 use flatbuffers::{self as fb, FlatBufferBuilder, WIPOffset};
+use rayon::prelude::*;
 use serde::Serialize;
 use std::{
     cmp,
@@ -18,6 +21,7 @@ use std::{
     path::PathBuf,
     result::Result as StdResult,
     str::FromStr,
+    sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
 use tracing::Level;
@@ -29,7 +33,7 @@ pub struct Options {
 }
 
 pub struct Store {
-    next_chunk_id: ChunkId,
+    next_chunk_id: CachePadded<AtomicU64>,
     opts: Options,
     sled_db: sled::Db,
     temp_dir: TempDir,
@@ -67,12 +71,13 @@ pub struct ChunkMeta {
 #[derive(Clone, Debug, Valuable)]
 struct ImportChunkResult {
     chunk_meta: ChunkMeta,
-    _duration: Duration,
+    duration: Duration,
 }
 
 #[derive(Clone, Debug, Valuable)]
 pub struct ImportResult {
-    pub bytes_total: Bytes,
+    pub chunk_bytes_total: Bytes,
+    pub chunk_write_rate: ByteRate,
     pub chunks_len: u64,
     pub duration: Duration,
     pub pages_total: u64,
@@ -240,7 +245,7 @@ impl Store {
         }
 
         Ok(Store {
-            next_chunk_id,
+            next_chunk_id: CachePadded::new(AtomicU64::new(next_chunk_id.0)),
             sled_db,
             temp_dir: TempDir::create(&*opts.path, /* keep: */ false)?,
 
@@ -269,48 +274,80 @@ impl Store {
             self.sled_db.drop_tree(tree_name)?;
         }
 
+        *self.next_chunk_id.get_mut() = 0;
+
         Ok(())
     }
 
-    pub fn import(&mut self, pages: impl Iterator<Item = Result<dump::Page>> + 'static
-    ) -> Result<ImportResult> {
-        // import_inner takes a `Box<dyn Iterator>` so we don't have to generate
-        // many versions of the whole body for each iterator type that is passed in.
-        self.import_inner(Box::new(pages))
-    }
-
-    fn import_inner(&mut self, pages: Box<dyn Iterator<Item = Result<dump::Page>>>
-    ) -> Result<ImportResult> {
-
+    pub fn import(&self, job_files: JobFiles) -> Result<ImportResult> {
         let start = Instant::now();
 
-        let mut pages = pages.peekable();
+        let files = job_files.open_files_par_iter()?;
 
-        let mut bytes_total: u64 = 0;
-        let mut pages_total: u64 = 0;
-        let mut chunks_len: u64 = 0;
+        let chunk_bytes_total = AtomicU64::new(0);
+        let pages_total = AtomicU64::new(0);
+        let chunks_len = AtomicU64::new(0);
 
-        while pages.peek().is_some() {
-            let res = self.import_chunk(&mut pages)?;
-            bytes_total += res.chunk_meta.bytes_len.0;
-            pages_total += res.chunk_meta.pages_len;
-            chunks_len += 1;
-        };
+        enum ImportEnd {
+            PageCountMax,
+            Err(Error),
+        }
+
+        let end = files.try_for_each(
+            |file_pages /* : impl Iterator<Item = Result<Page>> */| -> StdResult<(), ImportEnd> {
+                let mut pages = file_pages.peekable();
+
+                while pages.peek().is_some() {
+                    if let Some(max) = job_files.open_spec().max_count.as_ref().copied() {
+                        if pages_total.load(Ordering::SeqCst) > max {
+                            return Err(ImportEnd::PageCountMax);
+                        }
+                    }
+
+                    let res = match self.import_chunk(&mut pages) {
+                        Ok(res) => res,
+                        Err(e) => return Err(ImportEnd::Err(e)),
+                    };
+
+                    chunk_bytes_total.fetch_add(res.chunk_meta.bytes_len.0, Ordering::SeqCst);
+                    pages_total.fetch_add(res.chunk_meta.pages_len, Ordering::SeqCst);
+                    chunks_len.fetch_add(1, Ordering::SeqCst);
+
+                    tracing::debug!(
+                        chunk_bytes_total = Bytes(chunk_bytes_total.load(Ordering::SeqCst))
+                                               .as_value(),
+                        pages_total = pages_total.load(Ordering::SeqCst),
+                        chunks_len = chunks_len.load(Ordering::SeqCst),
+                        duration_so_far = Duration(start.elapsed()).as_value(),
+                        "Chunk import done");
+                };
+
+                Ok(())
+            });
+
+        // Log stats before checking `end` for an Error.
+        let chunk_bytes_total = Bytes(chunk_bytes_total.into_inner());
+        let duration = Duration(start.elapsed());
 
         let res = ImportResult {
-            bytes_total: Bytes(bytes_total),
-            chunks_len,
-            duration: Duration(start.elapsed()),
-            pages_total,
+            chunk_bytes_total,
+            chunk_write_rate: ByteRate::new(chunk_bytes_total, duration.0),
+            chunks_len: chunks_len.into_inner(),
+            duration,
+            pages_total: pages_total.into_inner(),
         };
 
         tracing::debug!(res = res.as_value(),
                         "Import done");
 
+        if let Err(ImportEnd::Err(e)) = end {
+            return Err(e);
+        }
+
         Ok(res)
     }
 
-    fn import_chunk(&mut self, pages: &mut dyn Iterator<Item = Result<dump::Page>>
+    fn import_chunk(&self, pages: &mut dyn Iterator<Item = Result<dump::Page>>
     ) -> Result<ImportChunkResult> {
         let start = Instant::now();
 
@@ -401,22 +438,14 @@ impl Store {
         by_id.apply_batch(by_id_batch)?;
         by_id.flush()?;
 
-        // TODO: Add chunk to store metadata, including path, ChunkId,
-        // count of pages, low page.id, high page.id.
-
-        // TODO: Update index of page.id -> StorePageId.
-
         let res = ImportChunkResult {
             chunk_meta: ChunkMeta {
                 bytes_len: Bytes(bytes_len.try_into().expect("Convert usize to u64")),
                 pages_len: pages_len.try_into().expect("Convert usize to u64"),
                 path: fb_out_path,
             },
-            _duration: Duration(start.elapsed()),
+            duration: Duration(start.elapsed()),
         };
-
-        tracing::debug!(res = res.as_value(),
-                        "Chunk imported");
 
         Ok(res)
     }
@@ -543,10 +572,9 @@ impl Store {
         self.chunks_path().join(format!("articles-{id:016x}.fbd", id = chunk_id.0))
     }
 
-    fn next_chunk_id(&mut self) -> ChunkId {
-        let next = self.next_chunk_id;
-        self.next_chunk_id.0 += 1;
-        next
+    fn next_chunk_id(&self) -> ChunkId {
+        let next = self.next_chunk_id.fetch_add(1, Ordering::SeqCst);
+        ChunkId(next)
     }
 
     fn get_tree_store_page_id_by_slug(&self) -> Result<sled::Tree> {

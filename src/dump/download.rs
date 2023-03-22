@@ -2,8 +2,8 @@
 
 use anyhow::{bail, Context, format_err};
 use crate::{
-    args::{DumpNameArg, JobNameArg},
-    dump::{self, Dump, DumpVersionStatus, FileMetadata, JobStatus, Version, VersionSpec},
+    dump::{self, DumpName, DumpVersionStatus, FileMetadata, JobName, JobStatus, Version,
+           VersionSpec},
     http,
     Result,
     TempDir,
@@ -45,7 +45,7 @@ const DUMPS_WIKIMEDIA_SERVER: &'static str = "https://dumps.wikimedia.org";
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dumps(
     client: &http::Client
-) -> Result<Vec<Dump>> {
+) -> Result<Vec<DumpName>> {
     let url = format!("{DUMPS_WIKIMEDIA_SERVER}/backup-index-bydb.html");
 
     let req = client.get(url)
@@ -59,7 +59,7 @@ pub async fn get_dumps(
                        "get_dumps index had HTML parse errors");
     }
 
-    let mut dumps = Vec::<Dump>::new();
+    let mut dumps = Vec::<DumpName>::new();
 
     for link in doc.select(&scraper::Selector::parse("a").expect("parse selector")) {
         let href = link.value().attr("href");
@@ -75,14 +75,16 @@ pub async fn get_dumps(
         };
 
         let dump_string = cap.name("dump").expect("regex capture name").as_str().to_string();
-        dumps.push(Dump(dump_string));
+        dumps.push(DumpName(dump_string));
     }
 
     tracing::debug!(dumps_count = dumps.len(),
                     "dumps ret count");
 
+    dumps.sort();
+
     if tracing::enabled!(Level::TRACE) {
-        tracing::trace!(dumps = ?dumps,
+        tracing::trace!(dumps = dumps.as_value(),
                        "dumps ret data");
     }
 
@@ -92,9 +94,9 @@ pub async fn get_dumps(
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_dump_versions(
     client: &http::Client,
-    dump_name: &DumpNameArg
+    dump_name: &DumpName,
 ) -> Result<Vec<Version>> {
-    let url = format!("{DUMPS_WIKIMEDIA_SERVER}/{dump_name}/", dump_name = dump_name.value);
+    let url = format!("{DUMPS_WIKIMEDIA_SERVER}/{dump_name}/", dump_name = dump_name.0);
     let req = client.get(url.clone())
                     .build()?;
 
@@ -106,7 +108,7 @@ pub async fn get_dump_versions(
                        "dump versions body had HTML parse errors");
     }
 
-    let mut vers = Vec::<Version>::new();
+    let mut versions = Vec::<Version>::new();
 
     for link in doc.select(&scraper::Selector::parse("a").expect("parse selector")) {
         let href = link.value().attr("href");
@@ -121,46 +123,44 @@ pub async fn get_dump_versions(
         };
 
         let ver_string = cap.name("date").expect("regex capture name").as_str().to_string();
-        vers.push(Version(ver_string));
+        versions.push(Version(ver_string));
     }
 
-    tracing::debug!(versions_count = vers.len(),
+    tracing::debug!(versions_count = versions.len(),
                     "dump versions ret count");
 
+    versions.sort();
+
     if tracing::enabled!(Level::TRACE) {
-        tracing::trace!(versions = ?vers,
+        tracing::trace!(versions = ?versions,
                        "dump versions ret data");
     }
 
-    Ok(vers)
+    Ok(versions)
 }
 
 #[tracing::instrument(level = "trace", skip(client), ret)]
 pub async fn get_dump_version_status(
     client: &http::Client,
-    dump_name: &DumpNameArg,
+    dump_name: &DumpName,
     version_spec: &VersionSpec,
 ) -> Result<(Version, DumpVersionStatus)> {
 
     let ver = match version_spec {
         VersionSpec::Version(ver) => ver.clone(),
         VersionSpec::Latest => {
-            let mut vers = get_dump_versions(&client, dump_name).await?;
+            let vers = get_dump_versions(&client, dump_name).await?;
             if vers.is_empty() {
                 bail!("No versions found for dump {dump_name}",
-                      dump_name = dump_name.value);
+                      dump_name = dump_name.0);
             }
-            vers.sort();
-            // Re-bind as immutable.
-            let vers = vers;
-
             let ver = vers.last().expect("vers not empty");
             ver.clone()
         },
     };
 
     let url = format!("{DUMPS_WIKIMEDIA_SERVER}/{dump_name}/{ver}/dumpstatus.json",
-                      dump_name = dump_name.value,
+                      dump_name = dump_name.0,
                       ver = ver.0);
     let req = client.get(url.clone())
                     .build()?;
@@ -176,18 +176,18 @@ pub async fn get_dump_version_status(
 #[tracing::instrument(level = "trace", skip(client))]
 pub async fn get_job_status(
     client: &http::Client,
-    dump_name: &DumpNameArg,
+    dump_name: &DumpName,
     version_spec: &VersionSpec,
-    job_name: &JobNameArg,
+    job_name: &JobName,
 ) -> Result<(Version, JobStatus)> {
-    let (ver, ver_status) = get_dump_version_status(&client, &dump_name, version_spec).await?;
+    let (ver, ver_status) = get_dump_version_status(client, dump_name, version_spec).await?;
 
-    let Some(job_status) = ver_status.jobs.get(&job_name.value) else {
+    let Some(job_status) = ver_status.jobs.get(&job_name.0) else {
         bail!("No status found for job dump_name={dump_name} \
                version={ver} job_name={job_name}",
-              dump_name = dump_name.value,
+              dump_name = dump_name.0,
               ver = ver.0,
-              job_name = job_name.value);
+              job_name = job_name.0);
     };
 
     if tracing::enabled!(Level::TRACE) {
@@ -198,9 +198,9 @@ pub async fn get_job_status(
         return Err(format_err!("Job status is not 'done' status={status} dump={dump_name} \
                                 version={ver} job={job_name}",
                                status = job_status.status,
-                               dump_name = dump_name.value,
+                               dump_name = dump_name.0,
                                ver = ver.0,
-                               job_name = job_name.value));
+                               job_name = job_name.0));
     }
 
     Ok((ver, job_status.clone()))
@@ -209,9 +209,9 @@ pub async fn get_job_status(
 #[tracing::instrument(level = "trace", skip(client), ret)]
 pub async fn get_file_infos(
     client: &http::Client,
-    dump_name: &DumpNameArg,
+    dump_name: &DumpName,
     version_spec: &VersionSpec,
-    job_name: &JobNameArg,
+    job_name: &JobName,
     file_name_regex: Option<&UserRegex>,
 ) -> Result<(Version, Vec<(String, FileMetadata)>)> {
     let (ver, job_status) = get_job_status(&client, dump_name,
@@ -234,9 +234,9 @@ pub async fn get_file_infos(
 #[tracing::instrument(level = "trace", ret, skip(client))]
 pub async fn download_job_file(
     client: &http::Client,
-    dump_name: &DumpNameArg,
+    dump_name: &DumpName,
     ver: &Version,
-    job_name: &JobNameArg,
+    job_name: &JobName,
     mirror_url: &str,
     file_meta: &FileMetadata,
     out_dir: &Path,

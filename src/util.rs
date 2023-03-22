@@ -1,5 +1,5 @@
 mod collections;
-pub use collections::{IteratorExt, IteratorExtLocal};
+pub use collections::{IteratorExt, IteratorExtLocal, IteratorExtSend};
 
 pub mod fmt;
 

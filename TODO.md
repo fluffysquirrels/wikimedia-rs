@@ -1,5 +1,19 @@
 # To do
 
+## WIP
+
+* Parallel import
+    * dump::local::open_* functions return a smarter type JobFiles (name?).
+        * Private fields: file list, dump spec
+        * Methods: field accessors, `pages() -> impl Iterator<Result<Page>>`
+    * Feed JobFiles to import. It can choose to import sequentially or in parallel.
+* Look up
+    * Rayon internals
+    * futures::Stream internals
+    * async rayon?
+    * Parallel streams?
+    * Crossbeam
+
 ## Must do before publishing
 
 * Images
@@ -9,7 +23,6 @@
 * Delete old files in http_cache.
     * find http_cache -type f -mtime +5
 * `get-store-page` by wikimedia ID or title.
-* No need to pass --version to get-dump-page with --dump-file or --job-dir.
 
 ## Might do
 
@@ -115,6 +128,8 @@
     * Left from failed downloads
     * Left from failed chunk writes to the store
 * Store
+    * Add chunk to store metadata, including path, ChunkId,
+      count of pages, low page.id, high page.id.
     * Locking (explicit or just document that sled does it)
     * async
     * Switch page chunks to capnproto?
@@ -148,8 +163,11 @@ bin/generate-completions && exec zsh
 * Add brief syntax hints for `--file-name-regex`.
 
 ### Code quality
+* Replace `Box<dyn Iterator>` Either enum.
 * Put Hashes in a tuple struct with a custom formatter.
 * Split `store.rs`
+* Split dump::local
+    * XML parsing to a different file.
 * Fork flatbuffers crate, add method `Vector::loc(&self)`?
     * Upstream?
 * Tidy up args to `operations::download_job_file`

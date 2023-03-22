@@ -31,11 +31,11 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let client = http::metadata_client(&args.common)?;
 
-    let (_ver, files) = dump::download::get_file_infos(
+    let (_version, files) = dump::download::get_file_infos(
         &client,
-        &args.dump_name,
+        &args.dump_name.value,
         &args.version_spec.value,
-        &args.job_name,
+        &args.job_name.value,
         args.file_name_regex.value.as_ref()).await?;
 
     if args.json.value {

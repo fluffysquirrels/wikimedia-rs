@@ -1,24 +1,27 @@
 //! Read local copies of Wikimedia dump files.
 
-use anyhow::{bail, format_err};
+use anyhow::format_err;
 use clap::{
     builder::PossibleValue,
     ValueEnum,
 };
 use crate::{
-    args::{CommonArgs, DumpFileSpecArgs, DumpNameArg, JobNameArg},
     dump::types::*,
     Error,
     Result,
     UserRegex,
     util::{
         fmt::Bytes,
-        IteratorExtLocal,
+        IteratorExtSend,
     },
     wikitext,
 };
 use iterator_ext::IteratorExt;
 use quick_xml::events::Event;
+use rayon::{
+    iter::Either,
+    prelude::*,
+};
 use std::{
     borrow::Cow,
     fmt::{self, Display},
@@ -32,9 +35,49 @@ use std::{
 use tracing::Level;
 use valuable::Valuable;
 
-struct PageIter<R: BufRead> {
+struct FilePageIter<R: BufRead> {
     xml_read: quick_xml::reader::Reader<R>,
     buf: Vec<u8>,
+}
+
+pub struct JobFiles {
+    open_spec: OpenSpec,
+    file_specs: Vec<FileSpec>,
+}
+
+#[derive(Clone, Debug)]
+pub struct OpenSpec {
+    pub source: SourceSpec,
+    pub max_count: Option<u64>,
+    pub compression: Compression,
+}
+
+#[derive(Clone, Debug)]
+pub enum SourceSpec {
+    Job(JobSpec),
+    Dir(DirSpec),
+    File(FileSpec),
+}
+
+#[derive(Clone, Debug)]
+pub struct JobSpec {
+    pub out_dir: PathBuf,
+    pub dump: DumpName,
+    pub version: Version,
+    pub job: JobName,
+    pub file_name_regex: Option<UserRegex>,
+}
+
+#[derive(Clone, Debug)]
+pub struct DirSpec {
+    pub path: PathBuf,
+    pub file_name_regex: Option<UserRegex>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FileSpec {
+    pub path: PathBuf,
+    pub seek: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -83,9 +126,9 @@ impl clap::ValueEnum for Compression {
 
 pub fn job_file_path(
     out_dir: &Path,
-    dump_name: &DumpNameArg,
+    dump_name: &DumpName,
     version: &Version,
-    job_name: &JobNameArg,
+    job_name: &JobName,
     file_meta: &FileMetadata
 ) -> Result<PathBuf> {
     let rel_url = file_meta.url.as_ref().ok_or_else(|| format_err!("file_meta.url was None"))?;
@@ -98,131 +141,157 @@ pub fn job_file_path(
 
 pub fn job_path(
     out_dir: &Path,
-    dump_name: &DumpNameArg,
+    dump: &DumpName,
     version: &Version,
-    job_name: &JobNameArg,
+    job: &JobName,
 ) -> PathBuf {
-    out_dir.join(format!("dumps/{dump_name}/{version}/{job_name}",
-                         dump_name = &*dump_name.value,
+    out_dir.join(format!("dumps/{dump}/{version}/{job}",
+                         dump = &*dump.0,
                          version = version.0,
-                         job_name = &*job_name.value))
+                         job = &*job.0))
 }
 
-pub fn open_dump_spec(
-    common: &CommonArgs,
-    file_spec: &DumpFileSpecArgs,
-) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
+pub fn open_spec(
+    spec: OpenSpec,
+) -> Result<JobFiles>
 {
-    let dump_file = file_spec.dump_file.as_ref().map(|p: &PathBuf| p.as_path());
-    let job_dir = file_spec.job_dir.as_ref().map(|p: &PathBuf| p.as_path());
-    let pages: Box<dyn Iterator<Item = Result<Page>>> =
-        match (dump_file, job_dir) {
-            (Some(_), Some(_)) => bail!("You supplied both --dump-file and --job-dir, \
-                                         but should only supply one of these"),
-            (Some(file), None) => {
-                open_dump_file(file, file_spec.compression, file_spec.seek.clone())?.boxed_local()
-            },
-            (None, Some(dir)) => {
-                open_dump_job_by_dir(dir, file_spec.compression,
-                                     file_spec.file_name_regex.value.clone())?
-                    .boxed_local()
-            }
-            (None, None) => {
-                match (file_spec.dump_name.as_ref(),
-                       file_spec.version.as_ref(),
-                       file_spec.job_name.as_ref()) {
-                    (Some(dump), Some(version), Some(job)) =>
-                        open_dump_job(
-                            &*common.out_dir, dump, version,
-                            job, file_spec.compression,
-                            file_spec.file_name_regex.value.clone()
-                        )?.boxed_local(),
-                    _ => bail!("You must supply one of these 3 valid argument sets:\n\
-                                1. `--dump-file`\n\
-                                2. `--job-dir'\n\
-                                3. `--dump`, `--version`, and `--job`"),
-                }
-            },
-        };
-
-    let pages = match file_spec.count {
-        None => pages,
-        Some(count) => pages.take(count).boxed_local(),
+    let file_specs: Vec<FileSpec> = match &spec.source {
+        SourceSpec::File(file_spec) => vec![file_spec.clone()],
+        SourceSpec::Dir(dir_spec) =>
+            file_specs_from_job_dir(&*dir_spec.path, spec.compression,
+                                    dir_spec.file_name_regex.as_ref())?,
+        SourceSpec::Job(job_spec) => {
+            let job_path: PathBuf = job_path(&*job_spec.out_dir, &job_spec.dump, &job_spec.version,
+                                             &job_spec.job);
+            file_specs_from_job_dir(&*job_path, spec.compression,
+                                    job_spec.file_name_regex.as_ref())?
+        },
     };
 
-    Ok(pages)
+    Ok(JobFiles {
+        file_specs: file_specs,
+        open_spec: spec,
+    })
 }
 
-pub fn open_dump_file(
-    path: &Path,
-    compression: Compression,
-    seek: Option<u64>
-) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
-{
-    tracing::debug!(path = %path.display(),
-                    ?compression,
-                    ?seek,
-                    "dump::open_dump_file");
-
-    let mut file_read = std::fs::File::open(path)?;
-    if let Some(offset) = seek {
-        let _ = file_read.seek(std::io::SeekFrom::Start(offset))?;
+impl JobFiles {
+    #[allow(dead_code)] // Not used yet.
+    pub fn file_specs(&self) -> &[FileSpec] {
+        &*self.file_specs
     }
 
-    let file_bufread = BufReader::with_capacity(64 * 1024, file_read);
+    #[allow(dead_code)] // Not used yet.
+    pub fn open_spec(&self) -> &OpenSpec {
+        &self.open_spec
+    }
 
-    fn into_page_iter<T>(inner: T) -> Result<Box<dyn Iterator<Item = Result<Page>>>>
-        where T: BufRead + 'static
+    pub fn open_pages_iter(&self) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>> {
+        let file_specs = self.file_specs.clone();
+        let compression = self.open_spec.compression;
+
+        let pages = file_specs.into_iter()
+            .map(move |spec: FileSpec| { // -> Result<impl Iterator<Item = Result<Page>>>
+                spec.open_pages_iter(compression)
+            })
+            .try_flatten_results() // : impl Iterator<Item = Result<Page>>
+            .boxed_send();
+
+        let pages = match self.open_spec.max_count {
+            None => pages,
+            Some(count) => pages.take(usize::try_from(count)?).boxed_send(),
+        };
+
+        Ok(pages)
+    }
+
+    pub fn open_pages_par_iter(&self) -> Result<impl ParallelIterator<Item = Result<Page>>> {
+        let pages = self.open_files_par_iter()?
+                        .flatten_iter();
+
+        let pages = match self.open_spec.max_count {
+            None => Either::Left(pages),
+            Some(count) => Either::Right(pages.take_any(usize::try_from(count)?)),
+        };
+
+        Ok(pages)
+    }
+
+    pub fn open_files_par_iter(&self)
+    -> Result<impl ParallelIterator<Item = impl Iterator<Item = Result<Page>>>>
     {
-        let xml_buf = Vec::<u8>::with_capacity(100_000);
-        let xml_read = quick_xml::reader::Reader::from_reader(inner);
-        let page_iter = PageIter {
-            xml_read,
-            buf: xml_buf,
-        }.boxed_local();
-        Ok(page_iter)
-    }
+        let file_specs: Vec<FileSpec> = self.file_specs.clone();
+        let compression = self.open_spec.compression;
 
-    match compression {
-        Compression::None => into_page_iter(file_bufread),
-        Compression::Bzip2 => {
-            let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
-            let bzip_bufread = BufReader::with_capacity(64 * 1024, bzip_decoder);
-            into_page_iter(bzip_bufread)
-        },
-        Compression::LZ4 => {
-            let lz4_decoder = lz4_flex::frame::FrameDecoder::new(file_bufread);
-            let lz4_bufread = BufReader::with_capacity(64 * 1024, lz4_decoder);
-            into_page_iter(lz4_bufread)
+        let pages = file_specs.into_par_iter()
+            .with_max_len(1) // Each thread processes one file at a time
+            .map_init(|| (),
+                      move |_s, spec: FileSpec| {
+                          match spec.open_pages_iter(compression) {
+                              Ok(pages) => Either::Left(pages),
+                              Err(e) => Either::Right(std::iter::once(Err(e))),
+                          }
+                      });
+        Ok(pages)
+    }
+}
+
+impl FileSpec {
+    pub fn open_pages_iter(
+        &self, compression: Compression
+    ) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>>
+    {
+        tracing::debug!(path = %self.path.display(),
+                        ?compression,
+                        ?self.seek,
+                        "dump::local::FileSpec::open_pages_iter()");
+
+        let mut file_read = std::fs::File::open(&*self.path)?;
+        if let Some(offset) = self.seek {
+            let _ = file_read.seek(std::io::SeekFrom::Start(offset))?;
+        }
+
+        let file_bufread = BufReader::with_capacity(64 * 1024, file_read);
+
+        fn into_page_iter<T>(inner: T) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>>
+            where T: BufRead + Send + 'static
+        {
+            let xml_buf = Vec::<u8>::with_capacity(100_000);
+            let xml_read = quick_xml::reader::Reader::from_reader(inner);
+            let page_iter = FilePageIter {
+                xml_read,
+                buf: xml_buf,
+            }.boxed_send();
+            Ok(page_iter)
+        }
+
+        match compression {
+            Compression::None => into_page_iter(file_bufread),
+            Compression::Bzip2 => {
+                let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
+                let bzip_bufread = BufReader::with_capacity(64 * 1024, bzip_decoder);
+                into_page_iter(bzip_bufread)
+            },
+            Compression::LZ4 => {
+                let lz4_decoder = lz4_flex::frame::FrameDecoder::new(file_bufread);
+                let lz4_bufread = BufReader::with_capacity(64 * 1024, lz4_decoder);
+                into_page_iter(lz4_bufread)
+            }
         }
     }
 }
 
-pub fn open_dump_job(
-    out_dir: &Path,
-    dump_name: &DumpNameArg,
-    version: &Version,
-    job_name: &JobNameArg,
-    compression: Compression,
-    user_file_name_regex: Option<UserRegex>,
-) -> Result<impl Iterator<Item = Result<Page>>>
-{
-    let job_path: PathBuf = job_path(out_dir, dump_name, version, job_name);
-    open_dump_job_by_dir(&*job_path, compression, user_file_name_regex)
-}
-
-pub fn open_dump_job_by_dir(
+pub fn file_specs_from_job_dir(
     job_path: &Path,
     compression: Compression,
-    user_file_name_regex: Option<UserRegex>,
-) -> Result<impl Iterator<Item = Result<Page>>>
+    user_file_name_regex: Option<&UserRegex>,
+) -> Result<Vec<FileSpec>>
 {
-    let mut file_paths =
+    let mut file_specs =
         std::fs::read_dir(job_path)?
             .map_err(|e: IoError| -> Error {
                      e.into()
             })
-            .try_filter_map(|dir_entry: DirEntry| -> Result<Option<PathBuf>> {
+            .try_filter_map(|dir_entry: DirEntry| -> Result<Option<FileSpec>> {
                 if !dir_entry.file_type()?.is_file() {
                     return Ok(None);
                 }
@@ -238,16 +307,20 @@ pub fn open_dump_job_by_dir(
                 if name_regex.is_match(&*name)
                     && user_file_name_regex.as_ref().map_or(true, |re| re.0.is_match(&*name))
                 {
-                    Ok(Some(dir_entry.path()))
+                    Ok(Some(FileSpec {
+                        path: dir_entry.path(),
+                        seek: None,
+                    }))
                 } else {
                     Ok(None)
                 }
-            }).try_collect::<Vec<PathBuf>>()?;
-    file_paths.sort_by(|a, b| natord::compare(&*a.to_string_lossy(),
-                                              &*b.to_string_lossy()));
+            }).try_collect::<Vec<FileSpec>>()?;
+
+    file_specs.sort_by(|a, b| natord::compare(&*a.path.to_string_lossy(),
+                                              &*b.path.to_string_lossy()));
 
     let files_total_len: u64 =
-        file_paths.iter().map(|path| path.metadata()
+        file_specs.iter().map(|spec| spec.path.metadata()
                                          .map_err(|e: std::io::Error| -> Error { e.into() })
                                          .map(|meta| meta.len()))
                          .try_fold(0_u64, |curr, len| -> Result<u64>
@@ -255,22 +328,16 @@ pub fn open_dump_job_by_dir(
 
     if tracing::enabled!(Level::DEBUG) {
         tracing::debug!(files_total_len = Bytes(files_total_len).as_value(),
-                        file_count = file_paths.len(),
-                        file_paths = ?file_paths.iter().map(|p| p.to_string_lossy())
+                        file_count = file_specs.len(),
+                        file_specs = ?file_specs.iter().map(|s| s.path.to_string_lossy())
                                                 .collect::<Vec<Cow<'_, str>>>(),
-                        "dump::open_dump_job() file paths");
+                        "job dir file paths");
     }
 
-    let pages = file_paths.into_iter()
-        .map(move |file_path: PathBuf| { // -> Result<impl Iterator<Item = Result<Page>>>
-            open_dump_file(&*file_path, compression, None /* seek */)
-        })
-        .try_flatten_results(); // : impl Iterator<Item = Result<Page>>
-
-    Ok(pages)
+    Ok(file_specs)
 }
 
-impl<R: BufRead> Iterator for PageIter<R> {
+impl<R: BufRead> Iterator for FilePageIter<R> {
     type Item = Result<Page>;
 
     fn next(&mut self) -> Option<Result<Page>> {
@@ -358,7 +425,7 @@ impl<R: BufRead> Iterator for PageIter<R> {
             self.buf.clear();
         } // loop on Event at top level
     } // end of fn next
-} // end of impl Iterator for PageIter
+} // end of impl Iterator for FilePageIter
 
 fn take_element_text<R: BufRead>(
     xml_read: &mut quick_xml::reader::Reader<R>,

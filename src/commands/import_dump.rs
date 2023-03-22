@@ -1,6 +1,6 @@
 use crate::{
-    args::{CommonArgs, DumpFileSpecArgs},
-    dump,
+    args::{CommonArgs, OpenSpecArgs},
+    dump::local::self,
     store,
     Result,
 };
@@ -16,19 +16,21 @@ pub struct Args {
     clear: bool,
 
     #[clap(flatten)]
-    dump_file_spec: DumpFileSpecArgs,
+    open_spec: OpenSpecArgs,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let pages = dump::local::open_dump_spec(&args.common, &args.dump_file_spec)?;
+    let spec = local::OpenSpec::try_from((args.common.clone(), args.open_spec))?;
+    let job_files = local::open_spec(spec)?;
 
     let mut store = store::Options::from_common_args(&args.common).build_store()?;
+
     if args.clear {
         store.clear()?;
     }
 
-    store.import(pages)?;
+    store.import(job_files)?;
 
     Ok(())
 }

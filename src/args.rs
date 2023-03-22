@@ -1,12 +1,19 @@
 mod http_cache_mode;
 use http_cache_mode::HttpCacheModeParser;
 
+use anyhow::bail;
 use crate::{
-    dump::{local::Compression, Version, VersionSpec},
+    dump::{
+        DumpName, JobName, Version, VersionSpec,
+        local::{self, Compression},
+    },
+    Error,
+    Result,
     UserRegex,
 };
 use http_cache_reqwest::CacheMode as HttpCacheMode;
 use std::{
+    convert::TryFrom,
     path::PathBuf,
     result::Result as StdResult,
     str::FromStr,
@@ -39,7 +46,7 @@ pub struct DumpNameArg {
     /// If not present tries to read the environment variable `WMD_DUMP`,
     /// finally uses `enwiki` as a default.
     #[arg(id = "dump", long = "dump", default_value = "enwiki", env = "WMD_DUMP")]
-    pub value: String,
+    pub value: DumpName,
 }
 
 #[derive(clap::Args, Clone, Debug)]
@@ -60,11 +67,11 @@ pub struct JobNameArg {
     /// If not present tries to read the environment variable `WMD_JOB`,
     /// finally uses `articlesdump` as a default.
     #[arg(id = "job", long = "job", default_value = "articlesdump", env = "WMD_JOB")]
-    pub value: String,
+    pub value: JobName,
 }
 
 #[derive(clap::Args, Clone, Debug)]
-pub struct DumpFileSpecArgs {
+pub struct OpenSpecArgs {
     #[clap(flatten)]
     pub dump_name: Option<DumpNameArg>,
 
@@ -98,7 +105,7 @@ pub struct DumpFileSpecArgs {
 
     /// Maximum count of pages operate on. No limit if omitted.
     #[arg(long)]
-    pub count: Option<usize>,
+    pub count: Option<u64>,
 
     #[clap(flatten)]
     pub file_name_regex: FileNameRegexArg,
@@ -160,5 +167,55 @@ impl FromStr for Version {
                 clap::error::ErrorKind::ValueValidation,
                 "The value must be 8 numerical digits (e.g. \"20230301\")."))
         }
+    }
+}
+
+impl TryFrom<(CommonArgs, OpenSpecArgs)> for local::OpenSpec {
+    type Error = Error;
+
+    fn try_from((common, args): (CommonArgs, OpenSpecArgs)) -> Result<local::OpenSpec> {
+        let dump_file = args.dump_file;
+        let job_dir = args.job_dir;
+
+        let source: local::SourceSpec = match (dump_file, job_dir) {
+            (Some(_), Some(_)) => bail!("You supplied both --dump-file and --job-dir, \
+                                         but should only supply one of these"),
+            (Some(file), None) => {
+                local::SourceSpec::File(local::FileSpec {
+                    path: file,
+                    seek: args.seek,
+                })
+            },
+            (None, Some(dir)) => {
+                local::SourceSpec::Dir(local::DirSpec {
+                    path: dir,
+                    file_name_regex: args.file_name_regex.value,
+                })
+            }
+            (None, None) => {
+                match (args.dump_name.as_ref(),
+                       args.version.as_ref(),
+                       args.job_name.as_ref()) {
+                    (Some(dump), Some(version), Some(job)) =>
+                        local::SourceSpec::Job(local::JobSpec {
+                            out_dir: common.out_dir,
+                            dump: dump.value.clone(),
+                            version: version.clone(),
+                            job: job.value.clone(),
+                            file_name_regex: args.file_name_regex.value,
+                        }),
+                    _ => bail!("You must supply one of these 3 valid argument sets:\n\
+                                1. `--dump-file`\n\
+                                2. `--job-dir'\n\
+                                3. `--dump`, `--version`, and `--job`"),
+                }
+            },
+        }; // end of match on arg choices.
+
+        Ok(local::OpenSpec {
+            compression: args.compression,
+            source,
+            max_count: args.count,
+        })
     }
 }

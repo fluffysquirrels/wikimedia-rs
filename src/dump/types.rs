@@ -1,10 +1,13 @@
 //! Data types used in Wikimedia data dumps and their metadata.
 
+use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fmt::{self, Display},
+    str::FromStr,
 };
+use valuable::Valuable;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DumpVersionStatus {
@@ -62,10 +65,10 @@ pub struct FileInfoOutput {
     pub metadata: FileMetadata,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Dump(pub String);
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Valuable)]
+pub struct DumpName(pub String);
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Valuable)]
 pub struct Version(pub String);
 
 #[derive(Clone, Debug)]
@@ -73,6 +76,9 @@ pub enum VersionSpec {
     Latest,
     Version(Version),
 }
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct JobName(pub String);
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Page {
@@ -96,5 +102,21 @@ pub struct CategoryName(pub String);
 impl Display for CategoryName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Category:{name}", name = self.0)
+    }
+}
+
+impl FromStr for DumpName {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<DumpName> {
+        Ok(DumpName(s.to_string()))
+    }
+}
+
+impl FromStr for JobName {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<JobName> {
+        Ok(JobName(s.to_string()))
     }
 }

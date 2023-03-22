@@ -22,18 +22,15 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let client = http::metadata_client(&args.common)?;
 
-    let mut vers = dump::download::get_dump_versions(&client, &args.dump_name).await?;
-    vers.sort();
-    // Rebind as immutable
-    let vers = vers;
+    let versions = dump::download::get_dump_versions(&client, &args.dump_name.value).await?;
 
     if args.json.value {
-        for ver in vers {
-            println!(r#""{}""#, ver.0);
+        for version in versions {
+            println!(r#""{}""#, version.0);
         }
     } else {
-        for ver in vers {
-            println!("{}", ver.0);
+        for version in versions {
+            println!("{}", version.0);
         }
     }
 

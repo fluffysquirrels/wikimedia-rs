@@ -8,6 +8,10 @@ pub trait IteratorExtLocal<Item> {
     fn boxed_local(self) -> Box<dyn Iterator<Item = Item> + 'static>;
 }
 
+pub trait IteratorExtSend<Item> {
+    fn boxed_send(self) -> Box<dyn Iterator<Item = Item> + Send + 'static>;
+}
+
 impl<Inner, Item> IteratorExt<Item> for Inner
     where Inner: Iterator<Item = Item> + Send + Sync + 'static
 {
@@ -27,5 +31,16 @@ impl<Inner, Item> IteratorExtLocal<Item> for Inner
     ) -> Box<dyn Iterator<Item = Item> + 'static>
     {
         Box::new(self) as Box<dyn Iterator<Item = Item> + 'static>
+    }
+}
+
+impl<Inner, Item> IteratorExtSend<Item> for Inner
+    where Inner: Iterator<Item = Item> + Send + 'static
+{
+    fn boxed_send(
+        self
+    ) -> Box<dyn Iterator<Item = Item> + Send + 'static>
+    {
+        Box::new(self) as Box<dyn Iterator<Item = Item> + Send + 'static>
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::bail;
 use crate::{
     args::{CommonArgs, DumpNameArg, JsonOutputArg, VersionSpecArg},
-    dump::{self, JobOutput, JobStatus},
+    dump::{self, JobName, JobOutput, JobStatus},
     http,
     Result,
 };
@@ -20,7 +20,7 @@ pub struct Args {
 
     /// The specific job name to get. By default information is returned about all jobs in the dump version.
     #[arg(long = "job")]
-    job_name: Option<String>,
+    job_name: Option<JobName>,
 
     #[clap(flatten)]
     json: JsonOutputArg,
@@ -28,28 +28,32 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let dump_name = &*args.dump_name.value;
+    let dump_name = &args.dump_name.value;
+    let version_spec = &args.version.value;
 
     let client = http::metadata_client(&args.common)?;
 
-    let(ver, ver_status) = dump::download::get_dump_version_status(&client, &args.dump_name,
-                                                               &args.version.value).await?;
+    let(version, version_status) = dump::download::get_dump_version_status(&client, dump_name,
+                                                                           version_spec).await?;
 
-    let jobs: Vec<(String, JobStatus)> = match args.job_name.as_ref() {
+    let mut jobs: Vec<(String, JobStatus)> = match args.job_name.as_ref() {
         Some(job_name) => {
-            let Some(job_status) = ver_status.jobs.get(job_name) else {
-                bail!("No status found for job job_name='{job_name}' version='{ver}' \
+            let Some(job_status) = version_status.jobs.get(&*job_name.0) else {
+                bail!("No status found for job job_name='{job_name}' version='{version}' \
                        dump_name='{dump_name}'",
-                      ver = ver.0);
+                      dump_name = dump_name.0,
+                      job_name = job_name.0,
+                      version = version.0);
             };
-            vec![(job_name.clone(), job_status.clone())]
+            vec![(job_name.0.clone(), job_status.clone())]
         },
         None => {
-            ver_status.jobs.iter()
-                           .map(|(k, v)| (k.clone(), v.clone()))
-                           .collect::<Vec<(String, JobStatus)>>()
+            version_status.jobs.iter()
+                               .map(|(k, v)| (k.clone(), v.clone()))
+                               .collect::<Vec<(String, JobStatus)>>()
         }
     };
+    jobs.sort_by(|(name1, _), (name2, _)| name1.as_str().cmp(name2.as_str()));
 
     if args.json.value {
         for (job_name, job_status) in jobs.iter() {

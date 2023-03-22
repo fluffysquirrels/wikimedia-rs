@@ -57,16 +57,17 @@ pub struct Args {
 pub async fn main(args: Args) -> Result<()> {
     let start_time = Instant::now();
 
-    let dump_name = &*args.dump_name.value;
-    let job_name = &*args.job_name.value;
+    let dump_name = &args.dump_name.value;
+    let version_spec = &args.version_spec.value;
+    let job_name = &args.job_name.value;
 
     let metadata_client = http::metadata_client(&args.common)?;
 
-    let (ver, files) = dump::download::get_file_infos(
+    let (version, files) = dump::download::get_file_infos(
         &metadata_client,
-        &args.dump_name,
-        &args.version_spec.value,
-        &args.job_name,
+        dump_name,
+        version_spec,
+        job_name,
         args.file_name_regex.value.as_ref()).await?;
 
     let temp_dir = TempDir::create(&*args.common.out_dir, args.keep_temp_dir)?;
@@ -85,16 +86,18 @@ pub async fn main(args: Args) -> Result<()> {
 
     for (_file_name, file_meta) in files.iter() {
         let res =
-            dump::download::download_job_file(&download_client, &args.dump_name, &ver,
-                                              &args.job_name, &*args.mirror_url, file_meta,
+            dump::download::download_job_file(&download_client, dump_name, &version,
+                                              job_name, &*args.mirror_url, file_meta,
                                               &*args.common.out_dir, &temp_dir).await
                 .with_context(|| format!(
                     "while downloading job file \
-                     dump='{dump_name}' \
-                     version='{ver}' \
-                     job='{job_name}' \
+                     dump='{dump}' \
+                     version='{version}' \
+                     job='{job}' \
                      file='{file_rel_url:?}'",
-                    ver = ver.0,
+                    dump = dump_name.0,
+                    version = version.0,
+                    job = job_name.0,
                     file_rel_url = &file_meta.url))?;
         match res.kind {
             DownloadJobFileResultKind::DownloadOk => {

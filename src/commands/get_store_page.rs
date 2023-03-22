@@ -39,7 +39,7 @@ enum OutputType {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = store::Options::from_common_args(&args.common).build_store()?;
+    let store = store::Options::from_common_args(&args.common).build()?;
 
     match (args.store_page_id, args.chunk_id) {
         (Some(_), Some(_)) => bail!(
@@ -52,7 +52,7 @@ pub async fn main(args: Args) -> Result<()> {
         },
         (None, Some(chunk_id)) => {
             check_output_type_not_html(args.out)?;
-            let chunk = store.get_mapped_chunk_by_chunk_id(chunk_id)?
+            let chunk = store.map_chunk(chunk_id)?
                              .ok_or_else(|| format_err!("chunk not found by id."))?;
             for page in chunk.pages_iter() {
                 output_page(&args, page).await?;
@@ -66,7 +66,7 @@ pub async fn main(args: Args) -> Result<()> {
 
             for chunk_id in chunk_ids.into_iter() {
                 tracing::debug!(?chunk_id, "Outputting pages from new chunk");
-                let chunk = store.get_mapped_chunk_by_chunk_id(chunk_id)?
+                let chunk = store.map_chunk(chunk_id)?
                                  .ok_or_else(|| format_err!("chunk not found by id."))?;
                 for page in chunk.pages_iter() {
                     output_page(&args, page).await?;

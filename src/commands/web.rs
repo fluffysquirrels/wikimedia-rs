@@ -36,7 +36,7 @@ struct WebState {
 pub async fn main(args: Args) -> Result<()> {
     let state = WebState {
         args: args.clone(),
-        page_store: store::Options::from_common_args(&args.common).build_store()?,
+        page_store: store::Options::from_common_args(&args.common).build()?,
     };
 
     let app = Router::new()

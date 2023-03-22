@@ -2,24 +2,15 @@
 
 ## WIP
 
-* Parallel import
-    * dump::local::open_* functions return a smarter type JobFiles (name?).
-        * Private fields: file list, dump spec
-        * Methods: field accessors, `pages() -> impl Iterator<Result<Page>>`
-    * Feed JobFiles to import. It can choose to import sequentially or in parallel.
-* Look up
-    * Rayon internals
-    * futures::Stream internals
-    * async rayon?
-    * Parallel streams?
-    * Crossbeam
+* Split store.rs
 
 ## Must do before publishing
 
 * Images
 * Title search
 * wiktext to HTML: remove active content (e.g. JavaScript)
-* Switch to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
+* Switch flatbuffers to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
+* Switch sled to sqlite (with FTS5) via rusqlite and sea_query
 * Delete old files in http_cache.
     * find http_cache -type f -mtime +5
 * `get-store-page` by wikimedia ID or title.
@@ -31,6 +22,11 @@
   https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
 * Performance
     * get-store-page --out none takes 491s.
+    * Replace sled
+    * Benchmark replacing flatbuffers
+        * get-chunk takes 431s with flatbuffers verifier
+        * get-chunk tkaes 16.81s without flatbuffers verifier
+    * 22714042 pages in enwiki-20230301-articlesdump
 * Improve downloads
     * Set download rate limit
     * Retries
@@ -163,9 +159,13 @@ bin/generate-completions && exec zsh
 * Add brief syntax hints for `--file-name-regex`.
 
 ### Code quality
-* Replace `Box<dyn Iterator>` Either enum.
+
+* Replace `Box<dyn Iterator>` with Either enum.
 * Put Hashes in a tuple struct with a custom formatter.
 * Split `store.rs`
+    * Page chunks
+    * Index (currently in sled)
+    * Public interface
 * Split dump::local
     * XML parsing to a different file.
 * Fork flatbuffers crate, add method `Vector::loc(&self)`?
@@ -575,3 +575,9 @@ du -cm *articles*.lz4 | egrep total | sed -e 's/total/articles*.xml.lz4 total/'
     * bz2:  11.1 MB/s
     * None: 89.8 MB/s
     * lz4:  67.1 MB/s
+
+* wmd import (now with rayon) @ b6e9661d387a4c67d34dea2996125bc696780ade  
+  over ~100000 pages  
+  `chunk_write_rate`:
+    * bz2: 19.34MiB/s
+    * lz4: 38.95Mib/s

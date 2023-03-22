@@ -13,7 +13,7 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let mut store = store::Options::from_common_args(&args.common).build_store()?;
+    let mut store = store::Options::from_common_args(&args.common).build()?;
     store.clear()?;
 
     Ok(())

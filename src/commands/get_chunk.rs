@@ -17,18 +17,13 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = store::Options::from_common_args(&args.common).build_store()?;
+    let store = store::Options::from_common_args(&args.common).build()?;
 
-    let mut chunk_ids: Vec<store::ChunkId> = Vec::new();
-    match args.chunk_id {
-        Some(chunk_id) => chunk_ids.push(chunk_id),
-        None => {
-            for chunk_id in store.chunk_id_iter() {
-                chunk_ids.push(chunk_id?);
-            }
-            chunk_ids.sort()
-        }
-    };
+    let chunk_ids: Vec<store::ChunkId> =
+        match args.chunk_id {
+            Some(chunk_id) => vec![chunk_id],
+            None => store.chunk_id_vec()?,
+        };
 
     for chunk_id in chunk_ids.into_iter() {
         let chunk_meta = store.get_chunk_meta_by_chunk_id(chunk_id)?

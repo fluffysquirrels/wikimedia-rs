@@ -24,7 +24,7 @@ pub async fn main(args: Args) -> Result<()> {
     let spec = local::OpenSpec::try_from((args.common.clone(), args.open_spec))?;
     let job_files = local::open_spec(spec)?;
 
-    let mut store = store::Options::from_common_args(&args.common).build_store()?;
+    let mut store = store::Options::from_common_args(&args.common).build()?;
 
     if args.clear {
         store.clear()?;

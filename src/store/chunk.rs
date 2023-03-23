@@ -16,6 +16,7 @@ use crate::{
         fmt::Bytes,
         IteratorExtSend,
     },
+    wikitext,
 };
 use crossbeam_utils::CachePadded;
 use flatbuffers::{self as fb, FlatBufferBuilder, WIPOffset};
@@ -66,6 +67,7 @@ pub struct MappedChunk {
 #[derive(Debug)]
 pub struct MappedPage {
     chunk: MappedChunk,
+    store_id: StorePageId,
     loc: usize,
 }
 
@@ -315,7 +317,7 @@ impl Store {
         fs::create_dir_all(temp_path.parent().expect("parent of temp_path"))?;
 
         Ok(Builder {
-            chunk_id: self.next_chunk_id(),
+            chunk_id,
             fbb: FlatBufferBuilder::with_capacity(
                 usize::try_from(
                     self.opts.max_chunk_len + (self.opts.max_chunk_len / 10) + 1_000_000)
@@ -440,6 +442,10 @@ impl MappedPage {
             wm::Page::init_from_table(table)
         }
     }
+
+    pub fn store_id(&self) -> StorePageId {
+        self.store_id
+    }
 }
 
 impl MappedChunk {
@@ -462,14 +468,25 @@ impl MappedChunk {
         drop(page_fb);
 
         Ok(MappedPage {
-            chunk: self,
+            store_id: StorePageId {
+                chunk_id: self.id,
+                page_chunk_idx: idx
+            },
             loc,
+            chunk: self,
         })
     }
 
-    pub fn pages_iter(&self) -> impl Iterator<Item = wm::Page<'_>> {
+    pub fn pages_iter(&self) -> impl Iterator<Item = (StorePageId, wm::Page<'_>)> {
         let chunk_fb = unsafe { self.chunk_fb_unchecked() };
-        chunk_fb.pages().iter()
+        chunk_fb.pages().iter().enumerate()
+            .map(|(idx, page)|
+                 (
+                     StorePageId {
+                         chunk_id: self.id,
+                         page_chunk_idx: PageChunkIndex(idx.try_into().expect("usize as u64"))
+                     },
+                     page))
     }
 
     fn meta(&self) -> ChunkMeta {
@@ -499,14 +516,13 @@ impl<'a, 'b> TryFrom<&'a wm::Page<'b>> for dump::Page {
     fn try_from(page_fb: &'a wm::Page<'b>) -> Result<dump::Page> {
         let mut page = convert_store_page_to_dump_page_without_body(page_fb)?;
 
-        if let dump::Page {
-            revision: Some(dump::Revision { ref mut text, .. }),
-            ..
-        } = page {
-            *text = page_fb.revision()
-                           .expect("just converted from this")
-                           .text()
-                           .map(|s| s.to_string());
+        if let Some(rev_fb) = page_fb.revision() {
+            if let Some(text_fb) = rev_fb.text() {
+                let rev = page.revision.as_mut()
+                              .expect("page_fb has revision so page should too");
+                rev.text = Some(text_fb.to_string());
+                rev.categories = wikitext::parse_categories(text_fb);
+            }
         }
         Ok(page)
     }

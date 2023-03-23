@@ -4,6 +4,7 @@ use crate::{
     dump::{self, CategoryName},
     Result,
     slug,
+    store::StorePageId,
     TempDir,
 };
 use std::{
@@ -14,6 +15,7 @@ use tokio::io::AsyncWriteExt;
 pub async fn convert_page_to_html(
     common_args: &CommonArgs,
     page: &dump::Page,
+    store_page_id: Option<StorePageId>,
 ) -> Result<Vec<u8>> {
 
     let pandoc_start = Instant::now();
@@ -50,18 +52,25 @@ pub async fn convert_page_to_html(
 
     // Write body prefix
     let page_slug = slug::page_title_to_slug(&*page.title);
-    let enwiki_link = format!("https://en.wikipedia.org/wiki/{page_slug}");
-    let enwiki_href = html_escape::encode_double_quoted_attribute(&*enwiki_link);
-    let id_link = format!("/enwiki/page/by-id/{page_id}", page_id = page.id);
-    let id_href = html_escape::encode_double_quoted_attribute(&*id_link);
-    let title_link = format!("/enwiki/page/by-title/{page_slug}");
-    let title_href = html_escape::encode_double_quoted_attribute(&*title_link);
-    let body_prefix = format!(
-        r#"
-           <p><a class="header-links" href="{enwiki_href}">This page on enwiki</a></p>
-           <p><a class="header-links" href="{id_href}">This page by MediaWiki ID</a></p>
-           <p><a class="header-links" href="{title_href}">This page by title</a></p>
-        "#);
+
+    fn link_html(text: &str, url: &str) -> String {
+        let href = html_escape::encode_double_quoted_attribute(url);
+        format!(r#"<p><a class="header-links" href="{href}">{text}</a></p>"#)
+    }
+
+    let links_html = [
+        link_html("This page on enwiki", &*format!("https://en.wikipedia.org/wiki/{page_slug}")),
+        link_html("This page by MediaWiki ID",
+                  &*format!("/enwiki/page/by-id/{page_id}", page_id = page.id)),
+        link_html("This page by title", &*format!("/enwiki/page/by-title/{page_slug}")),
+        store_page_id
+            .map(|id|
+                 link_html("This page by page store ID",
+                           &*format!("/enwiki/page/by-store-id/{id}")))
+            .unwrap_or("".to_string()),
+        ].join("\n");
+    let body_prefix = format!("{links_html}");
+
     let body_prefix_path = temp_dir.path()?.join("body_prefix.html");
     std::fs::write(&*body_prefix_path, body_prefix.as_bytes())?;
 

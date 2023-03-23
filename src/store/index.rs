@@ -2,61 +2,102 @@
 //! there are indexes implemented in this module that contain the serialised
 //! page's location in a chunk file.
 
+#[allow(dead_code)] // Not used at the moment, soon to be deleted.
+mod sled;
+
+use anyhow::format_err;
 use crate::{
     dump,
+    Error,
     Result,
     slug,
     store::StorePageId,
-    util::fmt::Bytes,
 };
+use rusqlite::{config::DbConfig, Connection, OpenFlags, Row, TransactionBehavior};
+use sea_query::{BlobSize, ColumnDef, enum_def, Expr, InsertStatement, Query,
+                SqliteQueryBuilder, Table};
+use sea_query_rusqlite::RusqliteBinder;
 use std::{
+    fs,
     path::PathBuf,
+    sync::{Mutex, MutexGuard},
 };
-use tracing::Level;
-use valuable::Valuable;
 
+#[derive(Debug)]
 pub struct Index {
+    conn: Mutex<Connection>,
+
     #[allow(dead_code)] // Not used yet.
     opts: Options,
-    sled_db: sled::Db,
 }
 
+#[derive(Debug)]
 pub struct Options {
     pub path: PathBuf,
 }
 
+#[derive(Debug)]
 pub struct ImportBatchBuilder<'index> {
-    by_id_batch: sled::Batch,
-    by_slug_batch: sled::Batch,
     index: &'index Index,
+    query_builder: InsertStatement,
+}
+
+#[derive(Debug)]
+#[enum_def]
+#[allow(dead_code)] // PageIden (generated from this) is used.
+struct Page {
+    mediawiki_id: u64,
+    store_id: StorePageId,
+    slug: String,
 }
 
 impl Options {
     pub fn build(self) -> Result<Index> {
-        let sled_db =
-            tracing::debug_span!("index::Options::build() opening sled_db",
-                                 sled_path = %self.path.display())
-                .in_scope(||
-                          sled::Config::default()
-                              .path(&*self.path)
-                              .open())?;
 
-        if tracing::enabled!(Level::DEBUG) {
-            let tree_names = sled_db.tree_names()
-                                    .into_iter()
-                                    .map(|bytes| -> String {
-                                         String::from_utf8_lossy(&*bytes).into_owned()
-                                    })
-                                    .collect::<Vec<String>>();
+        fs::create_dir_all(&*self.path)?;
+        let db_path = self.path.join("index.db");
 
-            tracing::debug!(sled_db.trees = ?tree_names,
-                            sled_db.size_on_disk = Bytes(sled_db.size_on_disk()?).as_value(),
-                            sled_db.was_recovered = sled_db.was_recovered(),
-                            "Store::new() loaded");
-        }
+        let open_flags =
+            OpenFlags::SQLITE_OPEN_READ_WRITE |
+            OpenFlags::SQLITE_OPEN_CREATE |
+            OpenFlags::SQLITE_OPEN_URI |
+            OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = Connection::open_with_flags(db_path, open_flags)?;
+        conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
+        conn.set_db_config(DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
+        // TODO: conn.trace()
+        // TODO: pragmas.
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+
+        let schema_sql = [
+                Table::create()
+                    .table(PageIden::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(PageIden::MediawikiId)
+                            .integer()
+                            .not_null()
+                            .primary_key())
+                    .col(ColumnDef::new(PageIden::StoreId)
+                            .blob(BlobSize::Blob(Some(16)))
+                            .not_null())
+                    .col(ColumnDef::new(PageIden::Slug)
+                            .text()
+                            .not_null())
+                    .build(SqliteQueryBuilder),
+                sea_query::Index::create()
+                    .name("index_page_by_slug")
+                    .if_not_exists()
+                    .table(PageIden::Table)
+                    .col(PageIden::Slug)
+                    .unique()
+                    .build(SqliteQueryBuilder),
+            ]
+            .join("; ");
+
+        conn.execute_batch(&schema_sql)?;
 
         Ok(Index {
-            sled_db,
+            conn: Mutex::new(conn),
 
             opts: self,
         })
@@ -64,72 +105,111 @@ impl Options {
 }
 
 impl Index {
-    pub fn clear(&self) -> Result<()> {
-        let default_tree_name = (*self.sled_db).name();
+    pub fn clear(&mut self) -> Result<()> {
+        let (delete_sql, params) =
+                Query::delete()
+                    .from_table(PageIden::Table)
+                    .build_rusqlite(SqliteQueryBuilder);
 
-        for tree_name in self.sled_db.tree_names().into_iter() {
-            if tree_name == default_tree_name {
-                continue;
-            }
-
-            tracing::debug!(tree_name = &*String::from_utf8_lossy(&*tree_name),
-                            "Dropping sled_db tree");
-            self.sled_db.drop_tree(tree_name)?;
-        }
+        tracing::debug!(sql = delete_sql, "Index::clear() sql");
+        self.conn()?.execute(&*delete_sql, &*params.as_params())?;
 
         Ok(())
     }
 
+    fn conn(&self) -> Result<MutexGuard<Connection>> {
+        self.conn.lock()
+            .map_err(|_e: std::sync::PoisonError<_>|
+                     format_err!("PoisonError locking connection mutex in store::Index"))
+    }
+
     pub fn import_batch_builder<'index>(&'index self) -> Result<ImportBatchBuilder<'index>> {
-        Ok(ImportBatchBuilder {
-            by_id_batch: sled::Batch::default(),
-            by_slug_batch: sled::Batch::default(),
-            index: self,
-        })
+        Ok(ImportBatchBuilder::new(self))
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub fn get_store_page_id_by_mediawiki_id(&self, id: u64) -> Result<Option<StorePageId>> {
-        let by_id = self.get_tree_store_page_id_by_mediawiki_id()?;
-        let store_page_id = try2!(by_id.get(&id.to_be_bytes()));
-        let store_page_id = StorePageId::try_from(&*store_page_id)?;
-        Ok(Some(store_page_id))
+        let (sql, params) = Query::select()
+            .from(PageIden::Table)
+            .column(PageIden::StoreId)
+            .and_where(Expr::col(PageIden::MediawikiId).eq(id))
+            .build_rusqlite(SqliteQueryBuilder);
+        let params2 = &*params.as_params();
+
+        let conn = self.conn()?;
+
+        let store_id_bytes =
+            match conn.query_row(&*sql, params2, |row: &Row| -> rusqlite::Result::<[u8; 16]>
+                                                 { row.get(0) }) {
+                Ok(x) => x,
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                Err(e) => return Err(Error::from(e)),
+            };
+        let store_id = StorePageId::try_from(store_id_bytes.as_slice())?;
+
+        Ok(Some(store_id))
     }
 
+    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub fn get_store_page_id_by_slug(&self, slug: &str) -> Result<Option<StorePageId>> {
-        let by_slug = self.get_tree_store_page_id_by_slug()?;
-        let store_page_id = try2!(by_slug.get(slug));
-        let store_page_id = StorePageId::try_from(&*store_page_id)?;
-        Ok(Some(store_page_id))
-    }
+        let (sql, params) = Query::select()
+            .from(PageIden::Table)
+            .column(PageIden::StoreId)
+            .and_where(Expr::col(PageIden::Slug).eq(slug))
+            .build_rusqlite(SqliteQueryBuilder);
+        let params2 = &*params.as_params();
 
-    fn get_tree_store_page_id_by_slug(&self) -> Result<sled::Tree> {
-        Ok(self.sled_db.open_tree(b"store_page_id_by_slug")?)
-    }
+        let conn = self.conn()?;
 
-    fn get_tree_store_page_id_by_mediawiki_id(&self) -> Result<sled::Tree> {
-        Ok(self.sled_db.open_tree(b"store_page_id_by_mediawiki_id")?)
+        let store_id_bytes =
+            match conn.query_row(&*sql, params2, |row: &Row| -> rusqlite::Result::<[u8; 16]> {
+                                                     row.get(0)
+                                                 }) {
+                Ok(x) => x,
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                Err(e) => return Err(Error::from(e)),
+            };
+
+        let store_id = StorePageId::try_from(store_id_bytes.as_slice())?;
+
+        Ok(Some(store_id))
     }
 }
 
 impl<'index> ImportBatchBuilder<'index> {
+    // TODO: Batch inserts.
+    fn new(index: &'index Index) -> ImportBatchBuilder<'index> {
+        let mut query_builder = Query::insert();
+        query_builder
+            .into_table(PageIden::Table)
+            .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug]);
+
+        ImportBatchBuilder {
+            index,
+            query_builder,
+        }
+    }
+
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
         let store_page_id_bytes = store_page_id.to_bytes();
         let page_slug = slug::page_title_to_slug(&*page.title);
-        self.by_slug_batch.insert(&*page_slug, &store_page_id_bytes);
 
-        self.by_id_batch.insert(&page.id.to_be_bytes(), &store_page_id_bytes);
+        batch_inserts_into_separate_queries_run_all_on_commit();
+
+        self.query_builder
+            .values([page.id.into(), (store_page_id_bytes.as_slice()).into(), page_slug.into()])?;
 
         Ok(())
     }
 
     pub fn commit(self) -> Result<()> {
-        let by_slug = self.index.get_tree_store_page_id_by_slug()?;
-        by_slug.apply_batch(self.by_slug_batch)?;
-        by_slug.flush()?;
+        let (sql, params) = self.query_builder.build_rusqlite(SqliteQueryBuilder);
+        let params2 = &*params.as_params();
 
-        let by_id = self.index.get_tree_store_page_id_by_mediawiki_id()?;
-        by_id.apply_batch(self.by_id_batch)?;
-        by_id.flush()?;
+        let mut conn = self.index.conn()?;
+        let txn = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        txn.execute(&*sql, params2)?;
+        txn.commit()?;
 
         Ok(())
     }

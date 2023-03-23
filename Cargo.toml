@@ -37,7 +37,10 @@ rayon = "1.7.0"
 regex = "1.7.1"
 reqwest = { version = "0.11.14", features = ["gzip", "stream"] }
 reqwest-middleware = "0.2.1"
+rusqlite = { version = "0.28.0", features = ["blob", "bundled", "chrono", "trace", "unlock_notify", "url"] }
 scraper = "0.15.0"
+sea-query = { version = "0.28.3", default-features = false, features = ["attr", "backend-sqlite", "derive", "thread-safe", "with-chrono"] }
+sea-query-rusqlite = { version = "0.2.0", features = ["with-chrono"] }
 serde = { version = "1.0.100", features = ["derive"] }
 serde_json = "1.0.93"
 sha1 = { version = "0.10.5", features = ["asm"] }

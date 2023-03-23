@@ -2,13 +2,24 @@
 
 ## WIP
 
-* Split store.rs
+* sqlite
+    * Batch import commits, fixes too many variable in SQL statement error.
+    * Benchmark
+        * Mutex around writer versus send commands to a thread.
+    * FTS
+    * Compact, checkpoint, etc at end of import.
+    * Concurrent reads.
+    * Detect Index.conn is dead / errored and reset with a new one.
+    * Slug search seems to be case sensitive.
 
 ## Must do before publishing
 
 * Images
 * Title search
-* wiktext to HTML: remove active content (e.g. JavaScript)
+* wiktext to HTML
+    * remove active content (e.g. JavaScript)
+    * Internal links to headings are broken. They're rewritten like  
+      `http://localhost:8089/enwiki/page/by-title/#Upright`
 * Switch flatbuffers to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
 * Switch sled to sqlite (with FTS5) via rusqlite and sea_query
 * Delete old files in http_cache.
@@ -18,6 +29,8 @@
 ## Might do
 
 ### Features
+* sqlite
+    * tracing
 * Upstream Valuable support for tracing-bunyan-formatter:  
   https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
 * Performance
@@ -27,6 +40,7 @@
         * get-chunk takes 431s with flatbuffers verifier
         * get-chunk tkaes 16.81s without flatbuffers verifier
     * 22714042 pages in enwiki-20230301-articlesdump
+    * Cache MappedChunk in Arc<>, LRU, something.
 * Improve downloads
     * Set download rate limit
     * Retries

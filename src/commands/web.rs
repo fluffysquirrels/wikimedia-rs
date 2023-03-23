@@ -16,8 +16,9 @@ use crate::{
     wikitext,
 };
 use std::{
+    fmt::Display,
     net::SocketAddr,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 /// Run a web server that returns Wikimedia content.
@@ -29,14 +30,14 @@ pub struct Args {
 
 struct WebState {
     args: Args,
-    page_store: store::Store,
+    store: Mutex<store::Store>,
 }
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
     let state = WebState {
         args: args.clone(),
-        page_store: store::Options::from_common_args(&args.common).build()?,
+        store: Mutex::new(store::Options::from_common_args(&args.common).build()?),
     };
 
     let app = Router::new()
@@ -101,17 +102,13 @@ impl IntoResponse for WebError {
 
 impl From<anyhow::Error> for WebError {
     fn from(e: anyhow::Error) -> WebError {
-        WebError(
-            (
-                // TODO: Render as HTML
-                // TODO: Only show for localhost
-                // TypedHeader(ContentType::html()),
+        WebError(error_response(&&*format!("Error: {e}")))
+    }
+}
 
-                StatusCode::INTERNAL_SERVER_ERROR,
-                TypedHeader(ContentType::text_utf8()),
-                format!("Error: {e}"),
-            ).into_response()
-        )
+impl<T> From<std::sync::PoisonError<std::sync::MutexGuard<'_, T>>> for WebError {
+    fn from(_e: std::sync::PoisonError<std::sync::MutexGuard<'_, T>>) -> WebError {
+        WebError(error_response(&"PoisonError unlocking Mutex in web module"))
     }
 }
 
@@ -120,18 +117,20 @@ impl<E> From<E> for WebError
     where E: std::error::Error + Send + Sync + 'static
 {
     fn from(e: E) -> WebError {
-        WebError(
-            (
-                // TODO: Render as HTML
-                // TODO: Only show for localhost
-                // TypedHeader(ContentType::html()),
-
-                StatusCode::INTERNAL_SERVER_ERROR,
-                TypedHeader(ContentType::text_utf8()),
-                format!("Error: {e}"),
-            ).into_response()
-        )
+        WebError(error_response(&*format!("Error: {e}")))
     }
+}
+
+fn error_response(msg: &dyn Display) -> Response {
+    (
+        // TODO: Render as HTML
+        // TODO: Only show for localhost
+        // TypedHeader(ContentType::html()),
+
+        StatusCode::INTERNAL_SERVER_ERROR,
+        TypedHeader(ContentType::text_utf8()),
+        msg.to_string()
+    ).into_response()
 }
 
 async fn get_page_by_store_id(
@@ -141,7 +140,7 @@ async fn get_page_by_store_id(
 
     let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
-    let Some(page_fb) = state.page_store.get_page_by_store_id(page_store_id)? else {
+    let Some(page_fb) = state.store.lock()?.get_page_by_store_id(page_store_id)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -149,13 +148,16 @@ async fn get_page_by_store_id(
             ).into_response()
         );
     };
+
+    let store_page_id = page_fb.store_id();
     let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
+    let html = wikitext::convert_page_to_html(&state.args.common, &page,
+                                              Some(store_page_id)).await?;
 
     Ok(response::Html(html).into_response())
 }
 
-
+#[axum::debug_handler]
 async fn get_page_by_id(
     State(state): State<Arc<WebState>>,
     Path((_dump_name, page_id)): Path<(String, String)>,
@@ -164,7 +166,7 @@ async fn get_page_by_id(
     let page_id = page_id.parse::<u64>()
                          .map_err(|e| WebError::from_std_error(e))?;
 
-    let Some(page_fb) = state.page_store.get_page_by_mediawiki_id(page_id)? else {
+    let Some(page_fb) = state.store.lock()?.get_page_by_mediawiki_id(page_id)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -172,8 +174,11 @@ async fn get_page_by_id(
             ).into_response()
         );
     };
+
+    let store_page_id = page_fb.store_id();
     let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
+    let html = wikitext::convert_page_to_html(&state.args.common, &page,
+                                              Some(store_page_id)).await?;
 
     Ok(response::Html(html).into_response())
 }
@@ -183,7 +188,7 @@ async fn get_page_by_title(
     Path((_dump_name, page_slug)): Path<(String, String)>,
 ) -> std::result::Result<impl IntoResponse, WebError> {
 
-    let Some(page_fb) = state.page_store.get_page_by_slug(&*page_slug)? else {
+    let Some(page_fb) = state.store.lock()?.get_page_by_slug(&*page_slug)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -191,8 +196,11 @@ async fn get_page_by_title(
             ).into_response()
         );
     };
+
+    let store_page_id = page_fb.store_id();
     let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page).await?;
+    let html = wikitext::convert_page_to_html(&state.args.common, &page,
+                                              Some(store_page_id)).await?;
 
     Ok(response::Html(html).into_response())
 }

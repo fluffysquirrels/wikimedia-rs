@@ -11,6 +11,14 @@
     * Concurrent reads.
     * Detect Index.conn is dead / errored and reset with a new one.
     * Slug search seems to be case sensitive.
+    * Tune query batch size.
+* Error logging for WebError.
+* Better error for no pandoc
+* Rate and ETA for import progress
+* Add context to import errors, especially unique constraint violations.
+* Non-unique titles!
+* Case insensitive titles
+* Display custom tracing values (e.g. Duration) differently in pretty mode.
 
 ## Must do before publishing
 
@@ -38,7 +46,7 @@
     * Replace sled
     * Benchmark replacing flatbuffers
         * get-chunk takes 431s with flatbuffers verifier
-        * get-chunk tkaes 16.81s without flatbuffers verifier
+        * get-chunk takes 16.81s without flatbuffers verifier
     * 22714042 pages in enwiki-20230301-articlesdump
     * Cache MappedChunk in Arc<>, LRU, something.
 * Improve downloads
@@ -377,7 +385,7 @@ pv index.txt.lz4 \
     | lz4 --compress \
     > index.categories.lz4
 ```
-    * How much space to indices use?
+    * How much space do indices use?
 ```
 cd ~/wmd/out/job-multistream
 du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
@@ -411,16 +419,20 @@ du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
 * Recompress data files as LZ4 snippet:
 ```
 cd ~/wmd/out/job
-ls -v *articles*.xml*.bz2 \
-    | xargs -n1 -I% bash -c \
+ls *articles*.xml*.bz2 \
+    | sort --version-sort \
+    | xargs -n1 -P 8 -I% bash -c \
     'set -o pipefail;
-     echo %;
-     BASE=$(echo % | sed -e "s/\.bz2//");
-     pv ${BASE}.bz2 \
-         | bzcat \
-         | lz4 --compress -1 \
-         > ${BASE}.lz4'
+IN="%";
+BASE="${IN/.bz2/}";
+echo "${BASE}";
+OUT="${BASE}.lz4";
+if ! test -f "${OUT}"; then
+echo "recompressing ${BASE}"
+bzcat "${IN}" | lz4 --verbose --compress -1 - "${OUT}";
+fi'
 ```
+
 * Disk usage for bz2 vs lz4:
 ```
 du -cm *articles*.bz2 | egrep total | sed -e 's/total/articles*.xml.bz2 total/'

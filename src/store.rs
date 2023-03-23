@@ -62,6 +62,7 @@ impl Options {
     /// Open an existing store or create a new one.
     pub fn build(self) -> Result<Store> {
         let index = index::Options {
+            max_values_per_batch: 100,
             path: self.path.join("index"),
         }.build()?;
 
@@ -90,7 +91,7 @@ impl Store {
         Ok(())
     }
 
-    pub fn import(&self, job_files: JobFiles) -> Result<ImportResult> {
+    pub fn import(&mut self, job_files: JobFiles) -> Result<ImportResult> {
         let start = Instant::now();
 
         let files = job_files.open_files_par_iter()?;
@@ -148,12 +149,14 @@ impl Store {
             pages_total: pages_total.into_inner(),
         };
 
-        tracing::info!(res = res.as_value(),
-                       "Import done");
-
         if let Err(ImportEnd::Err(e)) = end {
             return Err(e);
         }
+
+        tracing::info!(res = res.as_value(),
+                       "Import done");
+
+        self.index.optimise()?;
 
         Ok(res)
     }

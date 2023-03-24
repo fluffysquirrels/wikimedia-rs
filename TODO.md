@@ -13,6 +13,7 @@
     * Slug search seems to be case sensitive.
     * Tune query batch size.
     * Re-index from chunk store.
+    * Migrations framework, or at the very least an argument to delete the DB and start from scratch.
 * capnproto
     * Orphan API?
 * Error logging for WebError.

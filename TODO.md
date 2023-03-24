@@ -11,6 +11,8 @@
     * Concurrent reads.
     * Detect Index.conn is dead / errored and reset with a new one.
     * Slug search seems to be case sensitive.
+* capnproto
+    * Orphan API?
 
 ## Must do before publishing
 
@@ -20,6 +22,7 @@
     * remove active content (e.g. JavaScript)
     * Internal links to headings are broken. They're rewritten like  
       `http://localhost:8089/enwiki/page/by-title/#Upright`
+    * 404 page for pages by slug should link to enwiki.
 * Switch flatbuffers to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
 * Switch sled to sqlite (with FTS5) via rusqlite and sea_query
 * Delete old files in http_cache.
@@ -157,8 +160,8 @@
 ### Documentation
 * Item documentation
 * Pre-requisites for build and run.
-    * docker
-    * pandoc
+    * capnp, capnp-rust on path
+    * pandoc on path
 * Platforms tested
 * Architecture
 * Logging to JSON, reading with `node-bunyan` or `bunyan-view`

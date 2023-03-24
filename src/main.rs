@@ -12,6 +12,7 @@ mod util;
 
 // The rest of these sub-modules are in alphabetical order.
 mod args;
+mod capnp;
 mod commands;
 mod dump;
 mod fbs;

@@ -1,8 +1,8 @@
 use anyhow::{bail, format_err};
 use crate::{
     args::CommonArgs,
+    capnp::wikimedia_capnp as wmc,
     dump,
-    fbs::wikimedia as wm,
     store::{self, StorePageId},
     Result,
     wikitext,
@@ -64,23 +64,23 @@ pub async fn main(args: Args) -> Result<()> {
         (Some(store_page_id), None, None, None) => {
             let page = store.get_page_by_store_id(store_page_id)?
                             .ok_or_else(|| format_err!("page not found by id."))?;
-            output_page(&args, page.borrow(), page.store_id()).await?;
+            output_page(&args, page.borrow()?, page.store_id()).await?;
         },
         (None, Some(mediawiki_id), None, None) => {
             let page = store.get_page_by_mediawiki_id(mediawiki_id)?
                             .ok_or_else(|| format_err!("page not found by mediawiki-id."))?;
-            output_page(&args, page.borrow(), page.store_id()).await?;
+            output_page(&args, page.borrow()?, page.store_id()).await?;
         },
         (None, None, Some(slug), None) => {
             let page = store.get_page_by_slug(slug)?
                             .ok_or_else(|| format_err!("page not found by slug."))?;
-            output_page(&args, page.borrow(), page.store_id()).await?;
+            output_page(&args, page.borrow()?, page.store_id()).await?;
         },
         (None, None, None, Some(chunk_id)) => {
             check_output_type_not_html(args.out)?;
             let chunk = store.map_chunk(chunk_id)?
                              .ok_or_else(|| format_err!("chunk not found by id."))?;
-            for (store_id, page) in chunk.pages_iter() {
+            for (store_id, page) in chunk.pages_iter()? {
                 output_page(&args, page, store_id).await?;
             }
         },
@@ -94,7 +94,7 @@ pub async fn main(args: Args) -> Result<()> {
                 tracing::debug!(?chunk_id, "Outputting pages from new chunk");
                 let chunk = store.map_chunk(chunk_id)?
                                  .ok_or_else(|| format_err!("chunk not found by id."))?;
-                for (store_id, page) in chunk.pages_iter() {
+                for (store_id, page) in chunk.pages_iter()? {
                     output_page(&args, page, store_id).await?;
                 }
             }
@@ -113,7 +113,9 @@ fn check_output_type_not_html(output_type: OutputType) -> Result<()> {
     }
 }
 
-async fn output_page(args: &Args, page: wm::Page<'_>, store_id: StorePageId) -> Result<()> {
+async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePageId
+) -> Result<()>
+{
     match args.out {
         OutputType::None => {},
         OutputType::Json => {

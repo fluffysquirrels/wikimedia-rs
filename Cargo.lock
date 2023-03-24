@@ -400,6 +400,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "capnp"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18eca1b9aca7e3623dda158213b1b79c1e5c4293fbbf0ead6b9ed28a1763bbff"
+
+[[package]]
 name = "cc"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3306,6 +3312,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bzip2",
+ "capnp",
  "chrono",
  "clap",
  "clap_complete",

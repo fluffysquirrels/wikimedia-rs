@@ -1,9 +1,9 @@
-/// Analagous to the try!(Result<T,E>) macro but for use in a function that returns
-/// Option<Result<T,E>>, such as Iterator::next() methods (hence the name).
+/// Analagous to the `std::try!(Result<T,E>)` macro but for use in a function that returns
+/// `Option<Result<T,E>>`, such as `Iterator::next()` methods (hence the name).
 ///
-/// Unwraps a val: Result<T,E> to a T value or if val is Err(e) returns that early.
+/// Unwraps a `val: Result<T,E>` to a `T` value or if `val` is `Err(e)` returns that early.
 ///
-/// For use in a function that returns Result<Option<T2>,E2>.
+/// For use in a function that returns `Result<Option<T2>,E2>`.
 macro_rules! try_iter {
     ($expr:expr $(,)?) => {
         match $expr {
@@ -15,12 +15,12 @@ macro_rules! try_iter {
     };
 }
 
-/// Analagous to the std::try!(Result<T,E>) macro but for use on a Result<Option<T>,E> value.
+/// Analagous to the `std::try!(Result<T,E>)` macro but for use on a `Result<Option<T>,E>` value.
 ///
-/// Unwraps a val: Result<Option<T>,E> to a T value or returns val early if val is Err(e) or
-/// Ok(None).
+/// Unwraps a `val: Result<Option<T>,E>` to a `T` value or returns `val` early if `val` is `Err(e)`
+/// or `Ok(None)`.
 ///
-/// For use in a function that returns Result<Option<T2>,E2>.
+/// For use in a function that returns `Result<Option<T2>,E2>`.
 macro_rules! try2 {
     ($expr:expr $(,)?) => {
         match $expr {

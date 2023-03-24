@@ -1,19 +1,7 @@
-//! MediaWiki pages are stored in chunk files, implemented in this module.
-//!
-//! Currently the chunk files contain about 10 MB of pages serialised as a flatbuffers object.
-//!
-//! Work is in progress to switch to capnproto instead, because flatbuffers is only safe to use if
-//! the object tree is verified before use, and this takes quite a long time (50-100ms per chunk
-//! file).
-
-#[cfg(any())]
-mod flatbuffers;
-
-use anyhow::{bail, format_err};
+use anyhow::{bail, ensure, format_err};
 use crate::{
-    capnp::wikimedia_capnp as wmc,
     dump,
-    Error,
+    fbs::wikimedia as wm,
     Result,
     TempDir,
     util::{
@@ -22,19 +10,15 @@ use crate::{
     },
     wikitext,
 };
-use capnp::{
-    message::{HeapAllocator, Reader, ReaderOptions, TypedBuilder,
-              TypedReader},
-    serialize::BufferSegments,
-};
 use crossbeam_utils::CachePadded;
-use memmap2::Mmap;
+use flatbuffers::{self as fb, FlatBufferBuilder, WIPOffset};
 use serde::Serialize;
 use std::{
     cmp,
     fmt::{self, Debug, Display},
     fs,
-    io::{BufWriter, Seek, Write},
+    io::Write,
+    ops::Deref,
     path::PathBuf,
     result::Result as StdResult,
     str::FromStr,
@@ -60,22 +44,23 @@ pub struct StorePageId {
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Serialize, Valuable)]
-#[serde(transparent)]
 pub struct ChunkId(u64);
 
 #[derive(Clone, Copy, Debug)]
 pub struct PageChunkIndex(u64);
 
+#[derive(Debug)]
 pub struct MappedChunk {
     id: ChunkId,
-    len: u64,
+    mmap: memmap2::Mmap,
     path: PathBuf,
-    reader: TypedReader<BufferSegments<Mmap>, wmc::chunk::Owned>,
 }
 
+#[derive(Debug)]
 pub struct MappedPage {
     chunk: MappedChunk,
     store_id: StorePageId,
+    loc: usize,
 }
 
 #[derive(Clone, Debug, Serialize, Valuable)]
@@ -86,14 +71,12 @@ pub struct ChunkMeta {
     pub path: PathBuf,
 }
 
-pub struct Builder<'store> {
-    capb: TypedBuilder<wmc::chunk::Owned, HeapAllocator>,
+pub struct Builder<'fbb, 'store> {
     chunk_id: ChunkId,
-    curr_len_estimate: u64,
+    fbb: FlatBufferBuilder<'fbb>,
     out_path: PathBuf,
-    pages: Vec<dump::Page>,
     temp_path: PathBuf,
-    // page_caps: Vec::<WIPOffset<wm::Page<'fbb>>>,
+    page_fbs: Vec::<WIPOffset<wm::Page<'fbb>>>,
 
     _store: &'store Store,
 }
@@ -237,18 +220,85 @@ impl Options {
     }
 }
 
+impl<'fbb, 'store> Builder<'fbb, 'store> {
+    pub fn push(&mut self, page: &dump::Page) -> Result<StorePageId> {
+        let page_title = self.fbb.create_string(&*page.title);
+        let revision_fb = page.revision.as_ref().map(|revision| {
+            let revision_text_fb = revision.text.as_ref().map(|text| {
+                self.fbb.create_string(&*text)
+            });
+            let mut revision_b = wm::RevisionBuilder::new(&mut self.fbb);
+            revision_b.add_id(revision.id);
+            if let Some(fb) = revision_text_fb {
+                revision_b.add_text(fb);
+            }
+            revision_b.finish()
+        });
+        let mut page_b = wm::PageBuilder::new(&mut self.fbb);
+        if let Some(revision_fb) = revision_fb {
+            page_b.add_revision(revision_fb);
+        }
+        page_b.add_ns_id(page.ns_id);
+        page_b.add_id(page.id);
+        page_b.add_title(page_title);
+        let page_fb: WIPOffset<wm::Page> = page_b.finish();
+        self.page_fbs.push(page_fb);
+
+        let idx = (self.page_fbs.len() - 1).try_into().expect("usize as u64");
+
+        Ok(StorePageId {
+            chunk_id: self.chunk_id,
+            page_chunk_idx: PageChunkIndex(idx),
+        })
+    }
+
+    pub fn write_all(mut self) -> Result<ChunkMeta> {
+        let pages_len = self.page_fbs.len();
+
+        let pages_vec = self.fbb.create_vector_from_iter(self.page_fbs.into_iter());
+
+        let mut chunk_fbb = wm::ChunkBuilder::new(&mut self.fbb);
+        chunk_fbb.add_pages(pages_vec);
+        let chunk_fb = chunk_fbb.finish();
+
+        wm::finish_size_prefixed_chunk_buffer(&mut self.fbb, chunk_fb);
+        let fb_out = self.fbb.finished_data();
+        let bytes_len = fb_out.len();
+
+        let mut temp_file = fs::File::create(&*self.temp_path)?;
+        temp_file.write_all(fb_out)?;
+        drop(self.fbb);
+        temp_file.flush()?;
+        temp_file.sync_all()?;
+        drop(temp_file);
+
+        fs::rename(&*self.temp_path, &*self.out_path)?;
+
+        Ok(ChunkMeta {
+            bytes_len: Bytes(bytes_len.try_into().expect("Convert usize to u64")),
+            id: self.chunk_id,
+            pages_len: pages_len.try_into().expect("Convert usize to u64"),
+            path: self.out_path,
+        })
+    }
+
+    pub fn curr_bytes_len(&self) -> u64 {
+        u64::try_from(self.fbb.unfinished_data().len()).expect("usize to u64")
+    }
+}
+
 impl Store {
     pub fn clear(&mut self) -> Result<()> {
         let chunks_path = &*self.opts.path;
         if chunks_path.try_exists()? {
-            fs::remove_dir_all(&*chunks_path)?;
+            std::fs::remove_dir_all(&*chunks_path)?;
         }
 
         *self.next_chunk_id.get_mut() = 0;
         Ok(())
     }
 
-    pub fn chunk_builder<'store>(&'store self) -> Result<Builder<'store>> {
+    pub fn chunk_builder<'fbb, 'store>(&'store self) -> Result<Builder<'fbb, 'store>> {
         let chunk_id = self.next_chunk_id();
 
         let out_path = self.chunk_path(chunk_id);
@@ -259,15 +309,16 @@ impl Store {
         fs::create_dir_all(temp_path.parent().expect("parent of temp_path"))?;
 
         Ok(Builder {
-            capb: TypedBuilder::<wmc::chunk::Owned, HeapAllocator>::new_default(),
             chunk_id,
-            curr_len_estimate: 0,
-            pages: Vec::new(),
+            fbb: FlatBufferBuilder::with_capacity(
+                usize::try_from(
+                    self.opts.max_chunk_len + (self.opts.max_chunk_len / 10) + 1_000_000)
+                    .expect("usize from u64")),
             out_path,
             temp_path,
-            // page_fbs: Vec::<WIPOffset<wm::Page>>::with_capacity(
-            //     usize::try_from(self.opts.max_chunk_len / 1_000)
-            //         .expect("usize from u64")),
+            page_fbs: Vec::<WIPOffset<wm::Page>>::with_capacity(
+                usize::try_from(self.opts.max_chunk_len / 1_000)
+                    .expect("usize from u64")),
 
             _store: self,
         })
@@ -312,7 +363,7 @@ impl Store {
                                     oss = oss.to_string_lossy().to_string()))),
                 };
 
-                let Some(captures) = lazy_regex!("^articles-([0-9a-f]{16}).cap$").captures(&*name)
+                let Some(captures) = lazy_regex!("^articles-([0-9a-f]{16}).fbd$").captures(&*name)
                 else {
                     return None;
                 };
@@ -327,7 +378,7 @@ impl Store {
 
     pub fn get_chunk_meta_by_chunk_id(&self, chunk_id: ChunkId) -> Result<Option<ChunkMeta>> {
         let chunk = try2!(self.map_chunk(chunk_id));
-        Ok(Some(chunk.meta()?))
+        Ok(Some(chunk.meta()))
     }
 
     pub fn map_chunk(&self, id: ChunkId) -> Result<Option<MappedChunk>> {
@@ -342,24 +393,29 @@ impl Store {
             memmap2::MmapOptions::new()
                 .map(&file)?
         };
-        let len = mmap.len().try_into().expect("usize as u64");
-
-        let segments = BufferSegments::new(mmap, ReaderOptions::default())?;
-        let reader = Reader::new(segments, ReaderOptions::default());
-        let typed_reader = reader.into_typed::<wmc::chunk::Owned>();
 
         let chunk = MappedChunk {
             id,
-            len,
+            mmap,
             path: path.clone(),
-            reader: typed_reader,
         };
+
+        let bytes = chunk.bytes();
+
+        // This load runs the flatbuffers verifier, subsequent loads will not.
+        let _chunk_fb =
+            tracing::trace_span!("chunk::Store::map_chunk() running verifier.",
+                                 chunk_id = ?id,
+                                 path = %path.display())
+                .in_scope(|| {
+                    wm::size_prefixed_root_as_chunk(bytes)
+                })?;
 
         Ok(Some(chunk))
     }
 
     fn chunk_path(&self, chunk_id: ChunkId) -> PathBuf {
-        self.opts.path.join(format!("articles-{id:016x}.cap", id = chunk_id.0))
+        self.opts.path.join(format!("articles-{id:016x}.fbd", id = chunk_id.0))
     }
 
     fn next_chunk_id(&self) -> ChunkId {
@@ -368,130 +424,15 @@ impl Store {
     }
 }
 
-impl<'store> Builder<'store> {
-    pub fn push(&mut self, page: &dump::Page) -> Result<StorePageId> {
-        let page = page.clone();
-        self.curr_len_estimate +=
-            u64::try_from(page.title.len() +
-            match page.revision {
-                Some(dump::Revision { text: Some(ref text), .. }) => text.len(),
-                _ => 0,
-            }).expect("usize as u64");
-        self.pages.push(page.clone());
-        let idx = self.pages.len() - 1;
-        Ok(StorePageId {
-            chunk_id: self.chunk_id,
-            page_chunk_idx: PageChunkIndex(idx.try_into().expect("usize as u64")),
-        })
-    }
-
-    pub fn write_all(mut self) -> Result<ChunkMeta> {
-        let pages_len = self.pages.len();
-        let chunk_cap: wmc::chunk::Builder = self.capb.init_root();
-        let mut pages_cap = chunk_cap.init_pages(pages_len.try_into()
-                                                     .expect("pages.len() usize into u32"));
-
-        let pages = std::mem::take(&mut self.pages);
-        for (idx, page) in pages.into_iter().enumerate() {
-            let mut page_cap = pages_cap.reborrow().try_get(idx.try_into()
-                                    .expect("page chunk index u32 from usize"))
-                                    .expect("pages_cap.len() == pages.len()");
-            page_cap.set_ns_id(page.ns_id);
-            page_cap.set_id(page.id);
-            page_cap.set_title(&*page.title);
-            if let Some(revision) = page.revision {
-                let mut revision_cap = page_cap.init_revision();
-                revision_cap.set_id(revision.id);
-                if let Some(text) = revision.text {
-                    revision_cap.set_text(text.as_str());
-                }
-            }
-        }
-
-        let temp_file = fs::File::create(&*self.temp_path)?;
-        let mut buf_writer = BufWriter::with_capacity(16 * 1024, temp_file);
-        capnp::serialize::write_message(&mut buf_writer, self.capb.borrow_inner())?;
-        drop(self.capb);
-        buf_writer.flush()?;
-        buf_writer.get_ref().sync_all()?;
-        let bytes_len = buf_writer.stream_position()?;
-        drop(buf_writer);
-
-        fs::rename(&*self.temp_path, &*self.out_path)?;
-
-        Ok(ChunkMeta {
-            bytes_len: Bytes(bytes_len),
-            id: self.chunk_id,
-            pages_len: pages_len.try_into().expect("Convert usize to u64"),
-            path: self.out_path,
-        })
-    }
-
-    pub fn curr_bytes_len(&self) -> u64 {
-        self.curr_len_estimate
-    }
-}
-
-impl MappedChunk {
-    fn get_page<'a, 'b>(&'a self, idx: PageChunkIndex
-    ) -> Result<wmc::page::Reader<'b>>
-        where 'a: 'b
-    {
-        let chunk: wmc::chunk::Reader<'_> = self.reader.get()?;
-        let pages = chunk.get_pages()?;
-        let page: wmc::page::Reader<'_> =
-            pages.try_get(idx.0.try_into().expect("u64 PageChunkIndex as u32"))
-                 .ok_or_else(|| format_err!("MappedPage::borrow page index out of bounds. \
-                                             idx={idx} pages_len={len} chunk_id={chunk_id:?}",
-                                            len = pages.len(), chunk_id = self.id))?;
-        Ok(page)
-    }
-
-    fn get_mapped_page(self, idx: PageChunkIndex) -> Result<MappedPage> {
-        Ok(MappedPage {
-            store_id: StorePageId {
-                chunk_id: self.id,
-                page_chunk_idx: idx
-            },
-            chunk: self,
-        })
-    }
-
-    pub fn pages_iter(&self
-    ) -> Result<impl Iterator<Item = (StorePageId, wmc::page::Reader<'_>)>>
-    {
-        let chunk: wmc::chunk::Reader<'_> = self.reader.get()?;
-        let pages = chunk.get_pages()?;
-        let iter = pages.iter()
-                        .enumerate()
-                        .map(|(idx, page)|
-                             (
-                                 StorePageId {
-                                     chunk_id: self.id,
-                                     page_chunk_idx: PageChunkIndex(
-                                         idx.try_into().expect("usize as u64")),
-                                 },
-                                 page
-                             ));
-        Ok(iter)
-    }
-
-    fn meta(&self) -> Result<ChunkMeta> {
-        let chunk: wmc::chunk::Reader<'_> = self.reader.get()?;
-        let pages = chunk.get_pages()?;
-
-        Ok(ChunkMeta {
-            bytes_len: Bytes(self.len),
-            id: self.id,
-            pages_len: u64::from(pages.len()),
-            path: self.path.clone(),
-        })
-    }
-}
 
 impl MappedPage {
-    pub fn borrow<'a>(&'a self) -> Result<wmc::page::Reader<'a>> {
-        self.chunk.get_page(self.store_id.page_chunk_idx)
+    pub fn borrow<'a>(&'a self) -> wm::Page<'a> {
+        let bytes = self.chunk.bytes();
+
+        unsafe {
+            let table = fb::Table::new(bytes, self.loc);
+            wm::Page::init_from_table(table)
+        }
     }
 
     pub fn store_id(&self) -> StorePageId {
@@ -499,51 +440,97 @@ impl MappedPage {
     }
 }
 
-impl<'a, 'b> TryFrom<&'a wmc::page::Reader<'b>> for dump::Page {
-    type Error = Error;
+impl MappedChunk {
+    fn get_page<'a, 'b>(&'a self, idx: PageChunkIndex
+    ) -> Result<wm::Page<'b>>
+        where 'a: 'b
+    {
+        let chunk_fb = unsafe { self.chunk_fb_unchecked() };
+        let idx = idx.0 as usize;
+        ensure!(idx < chunk_fb.pages().len(),
+                "MappedChunk::get_page index out of bounds.");
 
-    fn try_from(page_cap: &'a wmc::page::Reader<'b>) -> Result<dump::Page> {
-        let mut page = convert_store_page_to_dump_page_without_body(page_cap)?;
+        let page_fb = chunk_fb.pages().get(idx);
+        Ok(page_fb)
+    }
 
-        if page_cap.has_revision() {
-            let rev_cap = page_cap.get_revision()?;
-            if rev_cap.has_text() {
-                let text = rev_cap.get_text()?;
+    fn get_mapped_page(self, idx: PageChunkIndex) -> Result<MappedPage> {
+        let page_fb = self.get_page(idx)?;
+        let loc = page_fb._tab.loc();
+        drop(page_fb);
+
+        Ok(MappedPage {
+            store_id: StorePageId {
+                chunk_id: self.id,
+                page_chunk_idx: idx
+            },
+            loc,
+            chunk: self,
+        })
+    }
+
+    pub fn pages_iter(&self) -> impl Iterator<Item = (StorePageId, wm::Page<'_>)> {
+        let chunk_fb = unsafe { self.chunk_fb_unchecked() };
+        chunk_fb.pages().iter().enumerate()
+            .map(|(idx, page)|
+                 (
+                     StorePageId {
+                         chunk_id: self.id,
+                         page_chunk_idx: PageChunkIndex(idx.try_into().expect("usize as u64"))
+                     },
+                     page))
+    }
+
+    fn meta(&self) -> ChunkMeta {
+        let chunk_fb = unsafe { self.chunk_fb_unchecked() };
+
+        ChunkMeta {
+            bytes_len: Bytes(self.mmap.len().try_into().expect("usize as u64")),
+            id: self.id,
+            pages_len: chunk_fb.pages().len().try_into().expect("usize as u64"),
+            path: self.path.clone(),
+        }
+    }
+
+    unsafe fn chunk_fb_unchecked(&self) -> wm::Chunk {
+        let bytes = self.bytes();
+        wm::size_prefixed_root_as_chunk_unchecked(bytes)
+    }
+
+    fn bytes(&self) -> &[u8] {
+        self.mmap.deref()
+    }
+}
+
+impl<'a, 'b> TryFrom<&'a wm::Page<'b>> for dump::Page {
+    type Error = anyhow::Error;
+
+    fn try_from(page_fb: &'a wm::Page<'b>) -> Result<dump::Page> {
+        let mut page = convert_store_page_to_dump_page_without_body(page_fb)?;
+
+        if let Some(rev_fb) = page_fb.revision() {
+            if let Some(text_fb) = rev_fb.text() {
                 let rev = page.revision.as_mut()
-                              .expect("page_cap has revision so page should too");
-                rev.text = Some(text.to_string());
-                rev.categories = wikitext::parse_categories(text);
+                              .expect("page_fb has revision so page should too");
+                rev.text = Some(text_fb.to_string());
+                rev.categories = wikitext::parse_categories(text_fb);
             }
         }
-
         Ok(page)
     }
 }
 
 pub fn convert_store_page_to_dump_page_without_body<'a, 'b>(
-    page_cap: &'a wmc::page::Reader<'b>
+    page_fb: &'a wm::Page<'b>
 ) -> Result<dump::Page> {
     Ok(dump::Page {
-        ns_id: page_cap.get_ns_id(),
-        id: page_cap.get_id(),
-        title: page_cap.get_title()?.to_string(),
-        revision: if page_cap.has_revision() {
-            let rev_cap = page_cap.get_revision()?;
-            let rev_text = if rev_cap.has_text() {
-                Some(rev_cap.get_text()?.to_string())
-            } else {
-                None
-            };
-            Some(dump::Revision {
-                id: rev_cap.get_id(),
-                categories: match rev_text {
-                    Some(ref text) => wikitext::parse_categories(text.as_str()),
-                    None => Vec::with_capacity(0),
-                },
-                text: rev_text,
-            })
-        } else {
-            None
-        },
+        ns_id: page_fb.ns_id(),
+        id: page_fb.id(),
+        title: page_fb.title().to_string(),
+        revision: page_fb.revision().as_ref().map(|revision| dump::Revision {
+            id: revision.id(),
+            text: None,
+            categories: vec![],
+        }),
     })
 }

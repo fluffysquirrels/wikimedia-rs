@@ -15,9 +15,12 @@ use crate::{
     Result,
     wikitext,
 };
+use futures::future::{self, Either};
 use std::{
     fmt::Display,
+    future::Future,
     net::SocketAddr,
+    result::Result as StdResult,
     sync::{Arc, Mutex},
 };
 
@@ -136,11 +139,11 @@ fn error_response(msg: &dyn Display) -> Response {
 async fn get_page_by_store_id(
     State(state): State<Arc<WebState>>,
     Path((_dump_name, page_store_id)): Path<(String, String)>,
-) -> std::result::Result<impl IntoResponse, WebError> {
+) -> StdResult<impl IntoResponse, WebError> {
 
     let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
-    let Some(page_fb) = state.store.lock()?.get_page_by_store_id(page_store_id)? else {
+    let Some(page_cap) = state.store.lock()?.get_page_by_store_id(page_store_id)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -149,24 +152,19 @@ async fn get_page_by_store_id(
         );
     };
 
-    let store_page_id = page_fb.store_id();
-    let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page,
-                                              Some(store_page_id)).await?;
-
-    Ok(response::Html(html).into_response())
+    response_from_mapped_page(page_cap, &*state).await
 }
 
 #[axum::debug_handler]
 async fn get_page_by_id(
     State(state): State<Arc<WebState>>,
     Path((_dump_name, page_id)): Path<(String, String)>,
-) -> std::result::Result<impl IntoResponse, WebError> {
+) -> StdResult<impl IntoResponse, WebError> {
 
     let page_id = page_id.parse::<u64>()
                          .map_err(|e| WebError::from_std_error(e))?;
 
-    let Some(page_fb) = state.store.lock()?.get_page_by_mediawiki_id(page_id)? else {
+    let Some(page_cap) = state.store.lock()?.get_page_by_mediawiki_id(page_id)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -175,20 +173,15 @@ async fn get_page_by_id(
         );
     };
 
-    let store_page_id = page_fb.store_id();
-    let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page,
-                                              Some(store_page_id)).await?;
-
-    Ok(response::Html(html).into_response())
+    response_from_mapped_page(page_cap, &*state).await
 }
 
 async fn get_page_by_title(
     State(state): State<Arc<WebState>>,
     Path((_dump_name, page_slug)): Path<(String, String)>,
-) -> std::result::Result<impl IntoResponse, WebError> {
+) -> StdResult<impl IntoResponse, WebError> {
 
-    let Some(page_fb) = state.store.lock()?.get_page_by_slug(&*page_slug)? else {
+    let Some(page_cap) = state.store.lock()?.get_page_by_slug(&*page_slug)? else {
         return Ok(
             (
                 StatusCode::NOT_FOUND, // 404
@@ -197,10 +190,26 @@ async fn get_page_by_title(
         );
     };
 
-    let store_page_id = page_fb.store_id();
-    let page = dump::Page::try_from(&page_fb.borrow())?;
-    let html = wikitext::convert_page_to_html(&state.args.common, &page,
-                                              Some(store_page_id)).await?;
+    response_from_mapped_page(page_cap, &*state).await
+}
 
-    Ok(response::Html(html).into_response())
+fn response_from_mapped_page(mapped_page: store::MappedPage, state: &WebState
+) -> impl Future<Output = StdResult<Response, WebError>> + Send {
+    let store_page_id = mapped_page.store_id();
+    let page_cap = match mapped_page.borrow() {
+        Ok(p) => p,
+        Err(e) => return Either::Left(Either::Left(future::err(e.into()))),
+    };
+    let page = match dump::Page::try_from(&page_cap) {
+        Ok(p) => p,
+        Err(e) => return Either::Left(Either::Right(future::err(e.into()))),
+    };
+    let common_args = state.args.common.clone();
+
+    Either::Right(async move {
+        let html = wikitext::convert_page_to_html(&common_args, &page,
+                                                  Some(store_page_id)).await?;
+
+        Ok(response::Html(html).into_response())
+    })
 }

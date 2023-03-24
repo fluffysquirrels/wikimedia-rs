@@ -23,3 +23,14 @@ if [ "fbs/wikimedia.fbs" -nt "fbs/gen/wikimedia_generated.rs" ]; then
         ' \
         > fbs/gen/wikimedia_generated.rs
 fi
+
+if [ "capnp/wikimedia.capnp" -nt "capnp/generated/wikimedia_capnp.rs" ]; then
+    echo "Regenerating capnp mods"
+
+    rm -rf capnp/generated
+    mkdir -p capnp/generated
+
+    capnp compile --output rust:capnp/generated --verbose --src-prefix capnp \
+          capnp/lib/rust.capnp \
+          capnp/wikimedia.capnp
+fi

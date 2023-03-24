@@ -177,7 +177,6 @@ impl Index {
 }
 
 impl<'index> ImportBatchBuilder<'index> {
-    // TODO: Batch inserts.
     fn new(index: &'index Index) -> ImportBatchBuilder<'index> {
         let mut query_builder = Query::insert();
         query_builder
@@ -193,8 +192,6 @@ impl<'index> ImportBatchBuilder<'index> {
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
         let store_page_id_bytes = store_page_id.to_bytes();
         let page_slug = slug::page_title_to_slug(&*page.title);
-
-        batch_inserts_into_separate_queries_run_all_on_commit();
 
         self.query_builder
             .values([page.id.into(), (store_page_id_bytes.as_slice()).into(), page_slug.into()])?;

@@ -13,6 +13,7 @@ path = "src/main.rs"
 anyhow = "1.0"
 axum = { version = "0.6.11", features = ["headers", "http2", "macros"] }
 bzip2 = "0.4.4"
+capnp = "0.16.1"
 chrono = "0.4.23"
 clap = { version = "4.1.8", features = ["derive", "env", "string"] }
 clap_complete = "4.1.4"

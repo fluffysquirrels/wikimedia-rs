@@ -5,7 +5,7 @@
 #[allow(dead_code)] // Not used at the moment, soon to be deleted.
 mod sled;
 
-use anyhow::format_err;
+use anyhow::{Context, format_err};
 use crate::{
     dump,
     Error,
@@ -14,9 +14,9 @@ use crate::{
     store::StorePageId,
 };
 use rusqlite::{config::DbConfig, Connection, OpenFlags, Row, TransactionBehavior};
-use sea_query::{BlobSize, ColumnDef, enum_def, Expr, InsertStatement, Query,
+use sea_query::{BlobSize, ColumnDef, enum_def, Expr, InsertStatement, OnConflict, Query,
                 SqliteQueryBuilder, Table};
-use sea_query_rusqlite::RusqliteBinder;
+use sea_query_rusqlite::{RusqliteBinder, RusqliteValues};
 use std::{
     fs,
     path::PathBuf,
@@ -26,18 +26,19 @@ use std::{
 #[derive(Debug)]
 pub struct Index {
     conn: Mutex<Connection>,
-
-    #[allow(dead_code)] // Not used yet.
     opts: Options,
 }
 
 #[derive(Debug)]
 pub struct Options {
+    pub max_values_per_batch: u64,
     pub path: PathBuf,
 }
 
 #[derive(Debug)]
 pub struct ImportBatchBuilder<'index> {
+    built: Vec<(String, RusqliteValues)>,
+    curr_num_values: u64,
     index: &'index Index,
     query_builder: InsertStatement,
 }
@@ -112,8 +113,19 @@ impl Index {
                     .build_rusqlite(SqliteQueryBuilder);
 
         tracing::debug!(sql = delete_sql, "Index::clear() sql");
-        self.conn()?.execute(&*delete_sql, &*params.as_params())?;
+        self.conn()?.execute(&*delete_sql, &*params.as_params())
+            .with_context(
+                || "in Index::clear() while deleting rows from sqlite table page")?;
+        self.conn()?.execute("VACUUM;", [])
+            .with_context(
+                || "in Index::clear() while vacuuming the database")?;
+        Ok(())
+    }
 
+    pub fn optimise(&mut self) -> Result<()> {
+        self.conn()?.execute("VACUUM;", [])
+            .with_context(
+                || "in Index::optimise() while vacuuming the database")?;
         Ok(())
     }
 
@@ -178,15 +190,20 @@ impl Index {
 
 impl<'index> ImportBatchBuilder<'index> {
     fn new(index: &'index Index) -> ImportBatchBuilder<'index> {
-        let mut query_builder = Query::insert();
-        query_builder
-            .into_table(PageIden::Table)
-            .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug]);
-
         ImportBatchBuilder {
+            built: vec![],
+            curr_num_values: 0,
             index,
-            query_builder,
+            query_builder: Self::insert_statement(),
         }
+    }
+
+    fn insert_statement() -> InsertStatement {
+        Query::insert()
+            .into_table(PageIden::Table)
+            .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug])
+            .on_conflict(OnConflict::new().do_nothing().to_owned())
+            .to_owned()
     }
 
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
@@ -196,16 +213,30 @@ impl<'index> ImportBatchBuilder<'index> {
         self.query_builder
             .values([page.id.into(), (store_page_id_bytes.as_slice()).into(), page_slug.into()])?;
 
+        self.curr_num_values += 1;
+
+        if self.curr_num_values > self.index.opts.max_values_per_batch {
+            let built_query = self.query_builder.build_rusqlite(SqliteQueryBuilder);
+            self.built.push(built_query);
+            self.curr_num_values = 0;
+            let _old = std::mem::replace(&mut self.query_builder, Self::insert_statement());
+        }
+
         Ok(())
     }
 
-    pub fn commit(self) -> Result<()> {
-        let (sql, params) = self.query_builder.build_rusqlite(SqliteQueryBuilder);
-        let params2 = &*params.as_params();
+    pub fn commit(mut self) -> Result<()> {
+        if self.curr_num_values > 0 {
+            let built_final = self.query_builder.build_rusqlite(SqliteQueryBuilder);
+            self.built.push(built_final);
+        }
 
         let mut conn = self.index.conn()?;
         let txn = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        txn.execute(&*sql, params2)?;
+        for (sql, params) in self.built.into_iter() {
+            let params2 = params.as_params();
+            txn.execute(&*sql, &*params2)?;
+        }
         txn.commit()?;
 
         Ok(())

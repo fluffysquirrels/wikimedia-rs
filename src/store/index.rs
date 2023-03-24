@@ -13,9 +13,9 @@ use crate::{
     slug,
     store::StorePageId,
 };
-use rusqlite::{config::DbConfig, Connection, OpenFlags, Row, TransactionBehavior};
+use rusqlite::{config::DbConfig, Connection, OpenFlags, Row, Transaction, TransactionBehavior};
 use sea_query::{BlobSize, ColumnDef, enum_def, Expr, InsertStatement, OnConflict, Query,
-                SqliteQueryBuilder, Table};
+                SimpleExpr, SqliteQueryBuilder, Table};
 use sea_query_rusqlite::{RusqliteBinder, RusqliteValues};
 use std::{
     fs,
@@ -31,16 +31,23 @@ pub struct Index {
 
 #[derive(Debug)]
 pub struct Options {
-    pub max_values_per_batch: u64,
+    pub max_values_per_batch: usize,
     pub path: PathBuf,
 }
 
-#[derive(Debug)]
-pub struct ImportBatchBuilder<'index> {
-    built: Vec<(String, RusqliteValues)>,
-    curr_num_values: u64,
+pub struct ImportBatchBuilder<'index>
+{
     index: &'index Index,
-    query_builder: InsertStatement,
+    page_batch: BatchInsert,
+    page_categories_batch: BatchInsert,
+}
+
+struct BatchInsert {
+    built: Vec<(String, RusqliteValues)>,
+    curr_num_values: usize,
+    init_fn: Box<dyn Fn() -> InsertStatement>,
+    max_batch_len: usize,
+    statement: InsertStatement,
 }
 
 #[derive(Debug)]
@@ -50,6 +57,14 @@ struct Page {
     mediawiki_id: u64,
     store_id: StorePageId,
     slug: String,
+}
+
+#[derive(Debug)]
+#[enum_def]
+#[allow(dead_code)] // PageCategoriesIden (generated from this) is used.
+struct PageCategories {
+    mediawiki_id: u64,
+    category_title: String,
 }
 
 impl Options {
@@ -90,6 +105,28 @@ impl Options {
                     .if_not_exists()
                     .table(PageIden::Table)
                     .col(PageIden::Slug)
+                    .unique()
+                    .build(SqliteQueryBuilder),
+                Table::create()
+                    .table(PageCategoriesIden::Table)
+                    .if_not_exists()
+                    .col(ColumnDef::new(PageCategoriesIden::MediawikiId)
+                             .integer()
+                             .not_null())
+                    .col(ColumnDef::new(PageCategoriesIden::CategoryTitle)
+                             .text()
+                             .not_null())
+                    .primary_key(sea_query::Index::create()
+                                     .col(PageCategoriesIden::MediawikiId)
+                                     .col(PageCategoriesIden::CategoryTitle)
+                                     .unique())
+                    .build(SqliteQueryBuilder),
+                sea_query::Index::create()
+                    .name("index_page_categories_by_category_title")
+                    .if_not_exists()
+                    .table(PageCategoriesIden::Table)
+                    .col(PageCategoriesIden::CategoryTitle)
+                    .col(PageCategoriesIden::MediawikiId)
                     .unique()
                     .build(SqliteQueryBuilder),
             ]
@@ -135,7 +172,8 @@ impl Index {
                      format_err!("PoisonError locking connection mutex in store::Index"))
     }
 
-    pub fn import_batch_builder<'index>(&'index self) -> Result<ImportBatchBuilder<'index>> {
+    pub fn import_batch_builder<'index>(&'index self
+    ) -> Result<ImportBatchBuilder<'index>> {
         Ok(ImportBatchBuilder::new(self))
     }
 
@@ -188,55 +226,99 @@ impl Index {
     }
 }
 
-impl<'index> ImportBatchBuilder<'index> {
-    fn new(index: &'index Index) -> ImportBatchBuilder<'index> {
-        ImportBatchBuilder {
-            built: vec![],
+impl BatchInsert {
+    fn new(init_fn: impl Fn() -> InsertStatement + 'static, max_batch_len: usize) -> BatchInsert {
+        BatchInsert {
+            built: Vec::new(),
             curr_num_values: 0,
-            index,
-            query_builder: Self::insert_statement(),
+            max_batch_len,
+            statement: init_fn(),
+            init_fn: Box::new(init_fn),
         }
     }
 
-    fn insert_statement() -> InsertStatement {
-        Query::insert()
-            .into_table(PageIden::Table)
-            .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug])
-            .on_conflict(OnConflict::new().do_nothing().to_owned())
-            .to_owned()
+    fn push_values<I>(&mut self, values: I) -> Result<()>
+        where I: IntoIterator<Item = SimpleExpr>
+    {
+        self.statement.values(values)?;
+
+        self.curr_num_values += 1;
+
+        if self.curr_num_values >= self.max_batch_len {
+            let built_query = self.statement.build_rusqlite(SqliteQueryBuilder);
+            self.built.push(built_query);
+            self.curr_num_values = 0;
+            let _old = std::mem::replace(&mut self.statement, (self.init_fn)());
+        }
+
+        Ok(())
+    }
+
+    fn execute_all(mut self, txn: &Transaction) -> Result<()> {
+        if self.curr_num_values > 0 {
+            let built_final = self.statement.build_rusqlite(SqliteQueryBuilder);
+            self.built.push(built_final);
+        }
+
+        for (sql, params) in self.built.into_iter() {
+            let params2 = params.as_params();
+            txn.execute(&*sql, &*params2)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl<'index> ImportBatchBuilder<'index> {
+    fn new(index: &'index Index) -> ImportBatchBuilder<'index> {
+        ImportBatchBuilder {
+            index,
+            page_batch: BatchInsert::new(
+                || Query::insert()
+                       .into_table(PageIden::Table)
+                       .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug])
+                       .on_conflict(OnConflict::new().do_nothing().to_owned())
+                       .to_owned(),
+                index.opts.max_values_per_batch),
+            page_categories_batch: BatchInsert::new(
+                || Query::insert()
+                       .into_table(PageCategoriesIden::Table)
+                       .columns([PageCategoriesIden::MediawikiId,
+                                 PageCategoriesIden::CategoryTitle])
+                       .to_owned(),
+                index.opts.max_values_per_batch),
+        }
     }
 
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
         let store_page_id_bytes = store_page_id.to_bytes();
         let page_slug = slug::page_title_to_slug(&*page.title);
 
-        self.query_builder
-            .values([page.id.into(), (store_page_id_bytes.as_slice()).into(), page_slug.into()])?;
+        self.page_batch.push_values([
+            page.id.into(),
+            (store_page_id_bytes.as_slice()).into(),
+            page_slug.into()
+        ])?;
 
-        self.curr_num_values += 1;
-
-        if self.curr_num_values > self.index.opts.max_values_per_batch {
-            let built_query = self.query_builder.build_rusqlite(SqliteQueryBuilder);
-            self.built.push(built_query);
-            self.curr_num_values = 0;
-            let _old = std::mem::replace(&mut self.query_builder, Self::insert_statement());
+        if let Some(ref rev) = page.revision {
+            for category in rev.categories.iter() {
+                self.page_categories_batch.push_values([
+                    page.id.into(),
+                    category.0.clone().into(),
+                ])?;
+            }
         }
 
         Ok(())
     }
 
-    pub fn commit(mut self) -> Result<()> {
-        if self.curr_num_values > 0 {
-            let built_final = self.query_builder.build_rusqlite(SqliteQueryBuilder);
-            self.built.push(built_final);
-        }
-
+    pub fn commit(self) -> Result<()> {
         let mut conn = self.index.conn()?;
         let txn = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        for (sql, params) in self.built.into_iter() {
-            let params2 = params.as_params();
-            txn.execute(&*sql, &*params2)?;
-        }
+
+        self.page_batch.execute_all(&txn)?;
+        self.page_categories_batch.execute_all(&txn)?;
+
         txn.commit()?;
 
         Ok(())

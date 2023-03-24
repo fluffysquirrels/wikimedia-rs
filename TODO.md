@@ -12,6 +12,7 @@
     * Detect Index.conn is dead / errored and reset with a new one.
     * Slug search seems to be case sensitive.
     * Tune query batch size.
+    * Re-index from chunk store.
 * capnproto
     * Orphan API?
 * Error logging for WebError.
@@ -20,7 +21,8 @@
 * Add context to import errors, especially unique constraint violations.
 * Non-unique titles!
 * Case insensitive titles
-* Display custom tracing values (e.g. Duration) differently in pretty mode.
+* Display custom tracing values (e.g. Duration) differently in console pretty mode.
+* List of pages in category.
 
 ## Must do before publishing
 

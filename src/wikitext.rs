@@ -8,6 +8,7 @@ use crate::{
     TempDir,
 };
 use std::{
+    fs,
     time::{Duration, Instant},
 };
 use tokio::io::AsyncWriteExt;
@@ -25,20 +26,28 @@ pub async fn convert_page_to_html(
     // Write Lua filter
 
     // TODO; Encode this as a Lua string literal.
-    let site_base: &str = "/enwiki/page/by-title/";
-    // let site_base: &str = "https://en.wikipedia.org/wiki/";
+    let page_by_title: &str = "/enwiki/page/by-title/";
+    let category_by_name: &str = "/enwiki/category/by-name/";
+    let enwiki_page_by_title: &str = "https://en.wikipedia.org/wiki/";
     let lua_filter = format!(
-        "
+        r#"
             function Link(el)
                 local target = el.target
-                if string.find(target, \"^http\") == nil then
-                    target = \"{site_base}\" .. el.target
+                if string.find(target, "^http") ~= nil then
+                    -- nothing to do for http(s) links.
+                elseif string.find(target, "^Category:") ~= nil then
+                    -- internal link for category page
+                    local name = string.gsub(target, "Category:", "", 1)
+                    target = "{category_by_name}" .. name
+                else
+                    -- internal link for regular page
+                    target = "{page_by_title}" .. el.target
                 end
                 return pandoc.Link(el.content, target)
             end
-        ");
+        "#);
     let lua_filter_path = temp_dir.path()?.join("filter.lua");
-    std::fs::write(&*lua_filter_path, lua_filter.as_bytes())?;
+    fs::write(&*lua_filter_path, lua_filter.as_bytes())?;
 
     // Write header suffix
     let header_suffix_path = temp_dir.path()?.join("header_suffix.html");
@@ -48,33 +57,36 @@ pub async fn convert_page_to_html(
                 a.header-links { color: #55f }
             </style>
         ";
-    std::fs::write(&*header_suffix_path, HEADER_SUFFIX.as_bytes())?;
+    fs::write(&*header_suffix_path, HEADER_SUFFIX.as_bytes())?;
 
     // Write body prefix
-    let page_slug = slug::page_title_to_slug(&*page.title);
+    let page_slug = slug::title_to_slug(&*page.title);
 
     fn link_html(text: &str, url: &str) -> String {
         let href = html_escape::encode_double_quoted_attribute(url);
+        let text = html_escape::encode_safe(text);
         format!(r#"<p><a class="header-links" href="{href}">{text}</a></p>"#)
     }
 
     let links_html = [
-        link_html("This page on enwiki", &*format!("https://en.wikipedia.org/wiki/{page_slug}")),
+        link_html("This page on enwiki", &*format!("{enwiki_page_by_title}{page_slug}")),
         link_html("This page by MediaWiki ID",
                   &*format!("/enwiki/page/by-id/{page_id}", page_id = page.id)),
-        link_html("This page by title", &*format!("/enwiki/page/by-title/{page_slug}")),
+        link_html("This page by title", &*format!("{page_by_title}{page_slug}")),
         store_page_id
             .map(|id|
                  link_html("This page by page store ID",
                            &*format!("/enwiki/page/by-store-id/{id}")))
             .unwrap_or("".to_string()),
         ].join("\n");
+
+    // Left as format!() for when I add extra stuff soon.
     let body_prefix = format!("{links_html}");
 
     let body_prefix_path = temp_dir.path()?.join("body_prefix.html");
-    std::fs::write(&*body_prefix_path, body_prefix.as_bytes())?;
+    fs::write(&*body_prefix_path, body_prefix.as_bytes())?;
 
-    let html_title = format!("{title} | wmd web", title = page.title.replace('\'', "_"));
+    let html_title = html_escape::encode_safe(&*page.title).to_string();
 
     let mut child =
         tokio::process::Command::new("pandoc")
@@ -86,7 +98,8 @@ pub async fn convert_page_to_html(
             "--toc",
             "--number-sections",
             "--number-offset", "1",
-            "--metadata", &*format!("title:{}", html_title),
+            "--metadata", &*format!("pagetitle:{} | wmd", html_title), // goes in <head><title>
+            "--metadata", &*format!("title:{}", html_title), // goes in <h1>
             "--lua-filter", &*lua_filter_path.to_string_lossy(),
             "--include-in-header", &*header_suffix_path.to_string_lossy(),
             "--include-before-body", &*body_prefix_path.to_string_lossy(),
@@ -129,10 +142,13 @@ pub async fn convert_page_to_html(
 pub fn parse_categories(
     wikitext: &str
 ) -> Vec<CategoryName> {
-    lazy_regex!(r#"\[\[Category:([^\]]+)\]\]"#).captures_iter(wikitext)
+    let mut vec = lazy_regex!(r#"\[\[Category:([^\]]+)\]\]"#).captures_iter(wikitext)
         .map(|captures| {
             let name = captures.get(1).expect("capture group 1").as_str().to_string();
             CategoryName(name)
         })
-        .collect::<Vec<CategoryName>>()
+        .collect::<Vec<CategoryName>>();
+    vec.sort();
+    vec.dedup();
+    vec
 }

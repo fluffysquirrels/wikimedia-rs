@@ -1,6 +1,10 @@
 //! Data types used in Wikimedia data dumps and their metadata.
 
-use crate::{Error, Result};
+use crate::{
+    Error,
+    Result,
+    slug,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
@@ -95,13 +99,23 @@ pub struct Revision {
     pub categories: Vec<CategoryName>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct CategoryName(pub String);
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct CategorySlug(pub String);
 
 impl Display for CategoryName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Category:{name}", name = self.0)
+    }
+}
+
+impl CategoryName {
+    pub fn to_slug(&self) -> CategorySlug {
+        CategorySlug(slug::title_to_slug(&*self.0))
     }
 }
 

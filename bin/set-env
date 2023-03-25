@@ -9,6 +9,6 @@ fi
 
 crate_dir="$( cd -- $(dirname "${script}")/..; pwd )";
 
-export RUST_LOG='wmd=debug'
+export RUST_LOG='wmd=debug,tower_http::trace::on_response=debug,info'
 export WMD_MIRROR_URL='https://ftp.acc.umu.se/mirror/wikimedia.org/dumps'
 export WMD_OUT_DIR="${crate_dir}/out"

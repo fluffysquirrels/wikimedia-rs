@@ -1,272 +1,6 @@
-# To do
+# Notes
 
-## WIP
-
-* sqlite
-    * Batch import commits, fixes too many variable in SQL statement error.
-    * Benchmark
-        * Mutex around writer versus send commands to a thread.
-    * FTS
-    * Compact, checkpoint, etc at end of import.
-    * Concurrent reads.
-    * Detect Index.conn is dead / errored and reset with a new one.
-    * Slug search seems to be case sensitive.
-    * Tune query batch size.
-    * Re-index from chunk store.
-    * Migrations framework, or at the very least an argument to delete the DB and start from scratch.
-* capnproto
-    * Orphan API?
-* Error logging for WebError.
-* Better error for no pandoc
-* Rate and ETA for import progress
-* Add context to import errors, especially unique constraint violations.
-* Non-unique titles!
-* Case insensitive titles
-* Display custom tracing values (e.g. Duration) differently in console pretty mode.
-* List of pages in category.
-
-## Must do before publishing
-
-* Images
-* Title search
-* wiktext to HTML
-    * remove active content (e.g. JavaScript)
-    * Internal links to headings are broken. They're rewritten like  
-      `http://localhost:8089/enwiki/page/by-title/#Upright`
-    * 404 page for pages by slug should link to enwiki.
-* Switch flatbuffers to capnproto (flatbuffers isn't safe, 50-100 ms to run verifier on a chunk)
-* Switch sled to sqlite (with FTS5) via rusqlite and sea_query
-* Delete old files in http_cache.
-    * find http_cache -type f -mtime +5
-* `get-store-page` by wikimedia ID or title.
-
-## Might do
-
-### Features
-* sqlite
-    * tracing
-* Upstream Valuable support for tracing-bunyan-formatter:  
-  https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
-* Performance
-    * get-store-page --out none takes 491s.
-    * Replace sled
-    * Benchmark replacing flatbuffers
-        * get-chunk takes 431s with flatbuffers verifier
-        * get-chunk takes 16.81s without flatbuffers verifier
-    * 22714042 pages in enwiki-20230301-articlesdump
-    * Cache MappedChunk in Arc<>, LRU, something.
-* Improve downloads
-    * Set download rate limit
-    * Retries
-    * Resume partial download
-    * Better performance: write while beginning next read
-    * Refactor to make it re-usable. Separate crate?
-    * Cancellation support
-    * Progress bar
-        * Crate [`indicatif`](https://crates.io/crates/indicatif) looks good.
-    * Configurable timeout
-* Categories
-    * Parse wikitext for category links e.g. `[[Category:1999 films]]`
-    * Add field `categories: Vec<CategoryName>` to `dump::Revision`.
-    * Might add categories to chunk page Revision struct.
-    * Add index `by_category_id`
-        * Key `(category_id,page_id)`
-        * Value: `(page_title)` or `()`  
-          `page_title` would need invalidating if pages get renamed.
-    * web  
-      [by-id](http://localhost:8089/enwiki/page/by-id/55814850)  
-      [example](http://localhost:8089/enwiki/page/by-title/Category:The_Matrix_(franchise)_films)
-        * Category page shows output from index where key = `[(category_id,0),(category_id + 1,0))`
-* Some way to handle multiple stores when we are importing a new version
-    * Could be as simple as writing new store to
-      `enwiki/{next_version}/store`, then restarting web pointing at
-      the new store when it's done
-* Handle multiple dumps (i.e. other wikimedia sites) / versions
-    * Separate stores per (dump,version)?
-* Improve import
-    * Restartable / checkpointed / idempotent
-    * Progress reporting, ETA
-    * One shot download and import, option to keep raw dumps or only
-      have one on disk during import.
-    * Import while web app is running
-    * In parallel
-    * daemon or cronjob
-* Dream lazy import:
-    * Start the web app, immediately be able to browse by page ID
-      using multistream dumps and data file HTTP range requests
-    * Index multistream indexes in the background (~ 1 minute)
-    * Can now browse or search by page title
-    * Start downloading and indexing data files, filling full text
-      search, by category indexes. Partial results for category
-      listing and FTS might be available during indexing with a
-      warning notice that they are incomplete.
-    * Finish indexing, all data is available, no warning.
-* Read wikimedia multistream dumps
-    * get-dump-page has `--offset`
-    * get-multistream-* commands
-        * Read index files to
-          `(index_file_name,
-            data_file_name,
-            data_stream_offset,
-            possibly data_stream_len,
-            page_id,
-            page_title)`
-        * Index this in something searchable by `page_id`, `page_title`
-        * Lookup page in multistream data file by page_id.
-* get-dump-page subcommand has raw xml output option.
-* Images
-    * Look at:
-        * https://dumps.wikimedia.org/index.json
-        * https://dumps.wikimedia.org/other/wikibase/commonswiki/
-        * https://meta.wikimedia.org/wiki/Data_dumps
-        * https://meta.wikimedia.org/wiki/Category:Data_dumps
-        * imagetable
-        * imagelinkstable
-* No concurrent access to data with sled, could write a service API or add import to web?
-* web
-    * Browsable
-    * Don't show error details to non-local hosts
-    * HTML template
-    * Request log
-    * Optional: Tower middleware, like rate limiting, concurrency limits
-    * Add compression for non-local hosts?
-    * TLS? Or instructions to set up a reverse proxy.
-* Subcommand to run from cron.
-    * Summary at the end.
-    * Notifications on success and failure would be great.
-    * Log to disk
-    * Delete old dump versions when newer ones are complete
-        * How to tell when new ones are complete?
-          Check names and file sizes, optionally hashes too.
-    * Handle it gracefully when:
-        *  The status of the job is not "done" (e.g. still in
-           progress). At the moment the `download` subcommand just returns
-           an Err() with a message, which isn't machine readable. Probably
-           return a custom `Error` struct with an `kind: ErrorKind` field.
-        *  Downloads fail. Retry automatically after a short delay or next
-           time the cronjob runs.
-* Render with `pandoc`
-    * Rewrite image links
-    * TODO: Sanitise HTML
-* Clean up temp files on future runs
-    * Left from failed downloads
-    * Left from failed chunk writes to the store
-* Store
-    * Add chunk to store metadata, including path, ChunkId,
-      count of pages, low page.id, high page.id.
-    * Locking (explicit or just document that sled does it)
-    * async
-    * Switch page chunks to capnproto?
-    * Inspect chunks
-    * When to run verifier when mapping chunks? At the moment we run on every read.
-    * Chunk list
-    * Race between writing a chunk and committing the sled index.
-        * Keep a chunks WIP tree in sled, insert chunk id,
-          flush_async, write the chunk to temp file, await the sled
-          flush, move the chunk to out dir, insert to sled index,
-          commit and flush.
-    * Try compression for chunks: LZ4 with https://github.com/PSeitz/lz4_flex
-* On first use prompt for default out path and save it to a config file
-
-### Documentation
-* Item documentation
-* Pre-requisites for build and run.
-    * capnp, capnp-rust on path
-    * pandoc on path
-* Platforms tested
-* Architecture
-* Logging to JSON, reading with `node-bunyan` or `bunyan-view`
-```
-CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
-wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
-```
-* Document shell completion script setup.
-```
-bin/generate-completions && exec zsh
-```
-* Add brief syntax hints for `--file-name-regex`.
-
-### Code quality
-
-* Replace `Box<dyn Iterator>` with Either enum.
-* Put Hashes in a tuple struct with a custom formatter.
-* Split `store.rs`
-    * Page chunks
-    * Index (currently in sled)
-    * Public interface
-* Split dump::local
-    * XML parsing to a different file.
-* Fork flatbuffers crate, add method `Vector::loc(&self)`?
-    * Upstream?
-* Tidy up args to `operations::download_job_file`
-* Validate dump name, job name to have no relative paths, path traversal.
-* mod article_dump
-    * More fields.
-    * `<siteinfo>`
-    * Performance
-* Futures tidy up in web, get-store-page and store
-    * Try to use `left_future` and `right_future` instead of boxing
-    * Revisit removing async closures (in http and operations modules)
-* Use anyhow macros: bail, format_err.
-* Split web server and cli tool?
-* Check page hashes in dump files
-* https://crates.io/crates/reqwest-tracing
-* Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
-    * Separates concerns, creates potential for non-CLI uses.
-* Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
-* Avoid boilerplate to record context variables in `download` subcommand.
-    * Perhaps use `tracing::span` to record context variables, with
-      events setting their parent to that span
-* Consider: making `http::{download, metadata}_client()` return different tuple struct
-  wrappers to avoid mixing the 2 up.
-* Cache metadata downloads
-    * Log cache hits and misses, implement CacheManager.
-* tracing complex fields logged as JSON rather than Debug?
-* Tidy up logging and error handling with some more spans / instrument use / closures
-    * E.g. repetition in http module.
-
-### Misc
-
-* Look into other sites
-    * https://meta.wikimedia.org/wiki/Wikimedia_projects
-    * : wiktionary, meta.wikimedia, mediawiki docs, wikisource, wikibooks, wikiquote, wikimedia commons
-* https://wikitech.wikimedia.org/wiki/Main_Page
-* Wikimedia APIs
-    * https://meta.wikimedia.org/wiki/Research:Data
-    * https://wikitech.wikimedia.org/wiki/Portal:Data_Services
-    * https://wikitech.wikimedia.org/wiki/Help:Cloud_Services_introduction
-        * https://wikitech.wikimedia.org/wiki/Help:Toolforge/Kubernetes
-        * https://wikitech.wikimedia.org/wiki/Help:Toolforge/Database
-    * https://meta.wikimedia.org/wiki/Wikimedia_movement
-    * https://en.wikipedia.org/api/rest_v1/
-        * `curl --compressed 'https://en.wikipedia.org/api/rest_v1/page/html/The_Matrix'`
-    * Look at https://github.com/magnusmanske/mediawiki_rust
-    * w/api.php
-        * https://www.mediawiki.org/wiki/API:Etiquette
-        * https://en.wikipedia.org/wiki/Special:ApiSandbox#action=query&format=rawfm&prop=info&titles=Albert%20Einstein&inprop=url%7Ctalkid
-        * https://en.wikipedia.org/wiki/Special:ApiSandbox#action=query&format=json&prop=info%7Cpageimages%7Cpageterms%7Crevisions&indexpageids=1&titles=The%20Matrix&callback=&formatversion=2&inprop=url%7Ctalkid&rvprop=ids%7Ctimestamp%7Cflags%7Ccomment%7Cuser&rvlimit=10
-        * `curl 'https://en.wikipedia.org/w/api.php?action=query&format=json&prop=info%7Cpageimages%7Cpageterms%7Crevisions&indexpageids=1&titles=The%20Matrix&callback=&formatversion=2&inprop=url%7Ctalkid&rvprop=ids%7Ctimestamp%7Cflags%7Ccomment%7Cuser&rvlimit=10' -v -H "Accept: application/json"`
-    * EventStreams
-        * https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams
-        * https://docs.rs/eventstreams/latest/eventstreams/
-        * `curl -s -H 'Accept: application/json' \
-               https://stream.wikimedia.org/v2/stream/recentchange | jq .`
-* Wikimedia tools
-    * https://github.com/spencermountain/dumpster-dip
-    * https://github.com/spencermountain/dumpster-dive
-* MediaWiki wikitext
-    * https://www.mediawiki.org/wiki/Wikitext
-    * https://docs.rs/parse_wiki_text/latest/parse_wiki_text/
-    * https://crates.io/crates/mediawiki_parser -- not as complete
-    * https://www.mediawiki.org/wiki/Alternative_parsers
-* Probably not at this point: bin/build scripts for "release but with symbols"; "release but stripped and lto" -- might be useful, might not.
-* More unit testing
-* Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
-
-
-## Notes
-
-* Hacky import a whole dump:
+* Hacky import for a whole dump job:
 ```
 wmd clear-store && \
     ls -v out/job/*articles*.xml*.bz2 \
@@ -303,9 +37,8 @@ wmd clear-store && \
   To check 808MB in `/enwiki/20230301/abstractsdump/*` takes:
     * wmd debug: 74s  
       `cargo run -- download --job abstractsdump`
-    * wmd release with rustflags = `-C target-cpu=native`: 6s
+    * wmd `--release` with rustflags = `-C target-cpu=native`: 6s
     * sha1sum: 2s
-    * `--release` ?
 * Render with `pandoc`
     * Snippet:
 ```sh
@@ -613,3 +346,47 @@ du -cm *articles*.lz4 | egrep total | sed -e 's/total/articles*.xml.lz4 total/'
   `chunk_write_rate`:
     * bz2: 19.34MiB/s
     * lz4: 38.95Mib/s
+
+## Download steps
+
+These are approximately the steps the `download` subcommand runs:
+
+* Download dump html index page: <https://dumps.wikimedia.org/enwiki/>
+* Scrape the links on it to subdirectories
+* Choose the latest date-named link
+* Under a date directory there's a `dumpstatus.json` file with some metadata  
+  e.g. <https://dumps.wikimedia.org/enwiki/20230301/dumpstatus.json>  
+  Under '.jobs.metacurrentdumprecombine' there is:
+
+  ```
+  {
+    "status": "done",
+    "updated": "2023-03-02 01:26:57",
+    "files": {
+      "enwiki-20230301-pages-articles.xml.bz2": {
+        "size": 20680789666,
+        "url": "/enwiki/20230301/enwiki-20230301-pages-articles.xml.bz2",
+        "md5": "99303f65fc9783df65428320ecbd5b73",
+        "sha1": "d4a615ea6d1ffa82f9071c8471d950a493fa6679"
+      }
+    }
+  }
+  ```
+
+* Check the metadata (.status == "done") and extract the file link and sha1 hash
+    * Note that some `dumpstatus.json` entries (on mirrors, for
+      some jobs) do not contain hashes, so make sure there is
+      one.
+* Download the files  
+  use a mirror:
+    * [Mirrors list](https://meta.wikimedia.org/wiki/Mirroring_Wikimedia_project_XML_dumps#Current_mirrors)
+    * This one seems fine: <https://ftp.acc.umu.se/mirror/wikimedia.org/dumps>
+* Check the files' SHA1 hashes
+* Report success or failure
+
+## More reference links
+
+* HTML page with links to all dumps: <https://dumps.wikimedia.org/backup-index-bydb.html>
+* <https://en.wikipedia.org/wiki/Wikipedia:Database_download>
+* Torrents (out of date): <https://meta.wikimedia.org/wiki/Data_dump_torrents#English_Wikipedia>
+* <https://meta.wikimedia.org/wiki/Data_dumps/FAQ>

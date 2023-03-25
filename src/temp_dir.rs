@@ -52,6 +52,11 @@ impl TempDir {
         }
         // Set self.cleaned_up = true whether or not the delete succeeds.
         self.cleaned_up = true;
+
+        if !self.path.try_exists()? {
+            return Ok(());
+        }
+
         if !self.keep {
             std::fs::remove_dir_all(&*self.path)
                 .with_context(|| format!("while cleaning up TempDir path='{path}'",

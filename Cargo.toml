@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
-axum = { version = "0.6.11", features = ["headers", "http2", "macros"] }
+axum = { version = "0.6.11", features = ["headers", "http2", "macros", "query"] }
 bzip2 = "0.4.4"
 capnp = "0.16.1"
 chrono = "0.4.23"
@@ -49,6 +49,8 @@ sled = { version = "0.34.7", default-features = false }
 tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "time", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["io"] }
+tower = { version = "0.4.13", features = [] }
+tower-http = { version = "0.4.0", features = ["catch-panic", "sensitive-headers", "trace"] }
 tracing = { version = "0.1.37", features = ["valuable"] }
 tracing-bunyan-formatter = { version = "0.3.6", features = ["valuable"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json", "time"] }

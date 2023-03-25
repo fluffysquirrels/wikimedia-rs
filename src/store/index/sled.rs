@@ -112,7 +112,7 @@ impl Index {
 impl<'index> ImportBatchBuilder<'index> {
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
         let store_page_id_bytes = store_page_id.to_bytes();
-        let page_slug = slug::page_title_to_slug(&*page.title);
+        let page_slug = slug::title_to_slug(&*page.title);
         self.by_slug_batch.insert(&*page_slug, &store_page_id_bytes);
 
         self.by_id_batch.insert(&page.id.to_be_bytes(), &store_page_id_bytes);

@@ -1,7 +1,7 @@
 //! A store for MediaWiki pages. Supports search and import from Wikimedia dump job files.
 
 mod chunk;
-mod index;
+pub mod index;
 
 pub use chunk::{
     ChunkId, ChunkMeta, convert_store_page_to_dump_page_without_body, MappedChunk, MappedPage,
@@ -9,7 +9,7 @@ pub use chunk::{
 };
 
 use crate::{
-    dump::{self, local::JobFiles},
+    dump::{self, CategorySlug, local::JobFiles},
     Error,
     Result,
     util::fmt::{ByteRate, Bytes, Duration},
@@ -189,6 +189,22 @@ impl Store {
         };
 
         Ok(res)
+    }
+
+    pub fn get_category(&self, slug_lower_bound: Option<&CategorySlug>, limit: Option<u64>
+    ) -> Result<Vec<dump::CategorySlug>>
+    {
+        self.index.get_category(slug_lower_bound, limit)
+    }
+
+    pub fn get_category_pages(
+        &self,
+        slug: &CategorySlug,
+        page_mediawiki_id_lower_bound: Option<u64>,
+        limit: Option<u64>,
+    ) -> Result<Vec<index::Page>>
+    {
+        self.index.get_category_pages(slug, page_mediawiki_id_lower_bound, limit)
     }
 
     pub fn get_page_by_store_id(&self, id: StorePageId) -> Result<Option<MappedPage>> {

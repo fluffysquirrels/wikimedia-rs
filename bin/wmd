@@ -5,4 +5,9 @@ readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
 "${crate_dir}/bin/generate-source"
 
-cargo run --release --manifest-path "${crate_dir}/Cargo.toml" -- "$@"
+(
+    cd "${crate_dir}"
+    cargo build --release --manifest-path "${crate_dir}/Cargo.toml"
+)
+
+"${crate_dir}/target/release/wmd" "$@"

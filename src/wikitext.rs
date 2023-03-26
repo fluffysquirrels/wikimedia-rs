@@ -3,7 +3,6 @@ use crate::{
     args::CommonArgs,
     dump::{self, CategoryName},
     Result,
-    slug,
     store::StorePageId,
     TempDir,
 };
@@ -16,7 +15,7 @@ use tokio::io::AsyncWriteExt;
 pub async fn convert_page_to_html(
     common_args: &CommonArgs,
     page: &dump::Page,
-    store_page_id: Option<StorePageId>,
+    _store_page_id: Option<StorePageId>,
 ) -> Result<Vec<u8>> {
 
     let pandoc_start = Instant::now();
@@ -28,7 +27,7 @@ pub async fn convert_page_to_html(
     // TODO: Escape these as a Lua string literal.
     let page_by_title: &str = "/enwiki/page/by-title/";
     let category_by_name: &str = "/enwiki/category/by-name/";
-    let enwiki_page_by_title: &str = "https://en.wikipedia.org/wiki/";
+
     let lua_filter = format!(
         r#"
             function Link(el)
@@ -49,44 +48,27 @@ pub async fn convert_page_to_html(
     let lua_filter_path = temp_dir.path()?.join("filter.lua");
     fs::write(&*lua_filter_path, lua_filter.as_bytes())?;
 
-    // Write header suffix
-    let header_suffix_path = temp_dir.path()?.join("header_suffix.html");
-    const HEADER_SUFFIX: &'static str =
-        "
-            <style>
-                a.header-links { color: #55f }
-            </style>
-        ";
-    fs::write(&*header_suffix_path, HEADER_SUFFIX.as_bytes())?;
+    // Write template
+    let template_path = temp_dir.path()?.join("template.html");
+    const TEMPLATE: &'static str =
+        r#"
+$if(toc)$
+  <nav id="$idprefix$TOC" role="doc-toc">
 
-    // Write body prefix
-    let page_slug = slug::title_to_slug(&*page.title);
+    <h2 id="$idprefix$toc-title">Table of contents</h2>
 
-    fn link_html(text: &str, url: &str) -> String {
-        let href = html_escape::encode_double_quoted_attribute(url);
-        let text = html_escape::encode_safe(text);
-        format!(r#"<p><a class="header-links" href="{href}">{text}</a></p>"#)
-    }
+    $table-of-contents$
+  </nav>
+$endif$
 
-    let links_html = [
-        link_html("This page on enwiki", &*format!("{enwiki_page_by_title}{page_slug}")),
-        link_html("This page by MediaWiki ID",
-                  &*format!("/enwiki/page/by-id/{page_id}", page_id = page.id)),
-        link_html("This page by title", &*format!("{page_by_title}{page_slug}")),
-        store_page_id
-            .map(|id|
-                 link_html("This page by page store ID",
-                           &*format!("/enwiki/page/by-store-id/{id}")))
-            .unwrap_or("".to_string()),
-        ].join("\n");
+$body$
+        "#;
+    fs::write(&*template_path, TEMPLATE.as_bytes())?;
 
-    // Left as format!() for when I add extra stuff soon.
-    let body_prefix = format!("{links_html}");
-
-    let body_prefix_path = temp_dir.path()?.join("body_prefix.html");
-    fs::write(&*body_prefix_path, body_prefix.as_bytes())?;
-
-    let html_title = html_escape::encode_safe(&*page.title).to_string();
+    let wikitext = page.revision.as_ref()
+        .and_then(|r| r.text.as_ref())
+        .map(|t| t.as_str())
+        .unwrap_or("");
 
     let mut child =
         tokio::process::Command::new("pandoc")
@@ -95,14 +77,11 @@ pub async fn convert_page_to_html(
                 "--to", "html",
                 "--sandbox",
                 "--standalone",
+                "--template", &*template_path.to_string_lossy(),
                 "--toc",
                 "--number-sections",
                 "--number-offset", "1",
-                "--metadata", &*format!("pagetitle:{} | wmd", html_title), // goes in <head><title>
-                "--metadata", &*format!("title:{}", html_title), // goes in <h1>
                 "--lua-filter", &*lua_filter_path.to_string_lossy(),
-                "--include-in-header", &*header_suffix_path.to_string_lossy(),
-                "--include-before-body", &*body_prefix_path.to_string_lossy(),
             ])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -112,11 +91,6 @@ pub async fn convert_page_to_html(
 
     let mut child_stdin =
         child.stdin.take().ok_or(format_err!("Failed to open stdin"))?;
-
-    let wikitext = page.revision.as_ref()
-        .and_then(|r| r.text.as_ref())
-        .map(|t| t.as_str())
-        .unwrap_or("");
 
     child_stdin.write_all(wikitext.as_bytes()).await?;
     drop(child_stdin); // Closes child's stdin so it will read EOF.

@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     headers::ContentType,
     http::{header, status::StatusCode, uri},
-    response::{self, IntoResponse, Response},
+    response::{IntoResponse, Response},
     Router,
     routing,
     Server,
@@ -12,7 +12,8 @@ use axum::{
 use crate::{
     args::CommonArgs,
     dump::{self, CategorySlug},
-    store::{self, index},
+    slug,
+    store::{self, index, StorePageId},
     Result,
     wikitext,
 };
@@ -357,6 +358,17 @@ async fn get_page_by_slug(
     response_from_mapped_page(page, &*state).await
 }
 
+#[derive(askama::Template)]
+#[template(path = "page.html")]
+struct PageHtml {
+    title: String,
+
+    mediawiki_id: u64,
+    slug: String,
+    store_page_id: StorePageId,
+    wikitext_html: String,
+}
+
 fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
 ) -> impl Future<Output = StdResult<Response, WebError>> + Send {
     let Some(page) = page else {
@@ -375,9 +387,18 @@ fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
     let common_args = state.args.common.clone();
 
     Either::Right(async move {
-        let html = wikitext::convert_page_to_html(&common_args, &page,
-                                                  Some(store_page_id)).await?;
+        let wikitext_html = wikitext::convert_page_to_html(&common_args, &page,
+                                                           Some(store_page_id)).await?;
+        let slug = slug::title_to_slug(&*page.title);
+        let wikitext_html = String::from_utf8_lossy(&*wikitext_html).to_string();
+        let html = PageHtml {
+            title: page.title,
 
-        Ok(response::Html(html).into_response())
+            mediawiki_id: page.id,
+            slug,
+            store_page_id,
+            wikitext_html,
+        };
+        Ok(html.into_response())
     })
 }

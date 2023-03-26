@@ -7,12 +7,13 @@
 
 * Support `cargo install` wmd / wikimedia-downloader
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
-* dump::download
 * store::chunk
     * Lock chunk store for writing during import.
         * Need to avoid simulataneous imports trying to write to the same chunk file.
-        * https://docs.rs/fslock/latest/fslock/struct.LockFile.html
-        * https://docs.rs/file-lock/latest/file_lock/
+        * Cross platform: https://docs.rs/fslock/latest/fslock/
+        * Unix only: https://docs.rs/file-lock/latest/file_lock/
+        * libc, async, lock wraps file: https://crates.io/crates/async-file-lock
+        * https://crates.io/crates/fd-lock
 * wikitext to HTML
     * remove active content (e.g. JavaScript)
         * https://docs.rs/ammonia/3.3.0/ammonia/
@@ -30,24 +31,15 @@
 * web
     * 404 page for no route match
     * 404 page for pages by slug should link to enwiki.
-    * Error page template in HTML
     * Error logging for WebError.
     * Browsable
     * Don't show error details to non-local hosts
-    * HTML template for pages and other HTML (index, categories list page, category pages list)
-    * HTML templating lib?
-        * https://blog.logrocket.com/top-3-templating-libraries-for-rust/
-            * Tera https://tera.netlify.app/docs/
-            * handlebars
-            * Liquid
     * Request log
     * PoisonError after panic on todo! in a page handler.
         * Should exit, let the process supervisor restart us.
     * https://github.com/tower-rs/tower-http
     * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
-    * 404 handling
     * Error handling
-    * Error: Query returned no rows
     * category by title should redirect to category url
 * cli `get-store-page` by wikimedia ID or title.
 * Categories
@@ -60,7 +52,7 @@
             * Paging UI
         * web: list of pages in category.
             * Paging UI.
-            * 404 if no pages founds.
+            * 404 if no pages found.
             * Add lower bound filter and order by.
     * cli: list of categories.
     * cli: list of pages in category.
@@ -85,11 +77,6 @@
 
 ### Features
 
-* web
-    * Optional: Tower middleware, like rate limiting, concurrency limits
-    * Add compression for non-local hosts?
-    * TLS? Or instructions to set up a reverse proxy.
-    * Typed DRY route building?? Could just regex the path.
 * Option to recompress as LZ4 in Rust.
 * Android app
     *  https://developer.android.com/develop/ui/views/layout/webapps/webview#kotlin
@@ -183,7 +170,6 @@
         * https://meta.wikimedia.org/wiki/Category:Data_dumps
         * imagetable
         * imagelinkstable
-* No concurrent access to data with sled, could write a service API or add import to web?
 * Subcommand to run from cron.
     * Summary at the end.
     * Notifications on success and failure would be great.
@@ -210,13 +196,13 @@
       count of pages, low page.id, high page.id.
     * async?
     * Inspect chunks
-    * When to run verifier when mapping chunks? At the moment we run on every read.
     * Chunk list
     * Race between writing a chunk and committing the sled index.
-        * Keep a chunks WIP tree in sled, insert chunk id,
-          flush_async, write the chunk to temp file, await the sled
-          flush, move the chunk to out dir, insert to sled index,
-          commit and flush.
+        * Keep a chunks WIP table in the index, insert chunk id,
+          commit and flush, write the chunk to temp file, move the
+          chunk to out dir, in one transaction write the index entries
+          for the chunk and remove the chunk_id from the WIP table,
+          commit and flush
     * Try compression for chunks: LZ4 with https://github.com/PSeitz/lz4_flex
 * store::Index
     * Benchmark
@@ -240,14 +226,21 @@
     * Migrations framework, or at the very least an argument to delete the DB and start from
     * sqlite optimise improvements
         * run at end of import, after clear.
-        * https://www.sqlite.org/pragma.html : PRAGMA optimize;
+        * PRAGMA optimize; https://www.sqlite.org/pragma.html#pragma_optimize
         * ANALYZE
-        * Force WAL checkpoint
+        * Force WAL checkpoint  
+          `pragma wal_checkpoint(TRUNCATE)`  
+          https://www.sqlite.org/pragma.html#pragma_wal_checkpoint
         * VACUUM
     * sqlite compilation options
         * https://www.sqlite.org/compile.html#enable_stat4
     * Maybe clear() should delete the files and re-open?
 * On first use prompt for default out path and save it to a config file
+* web
+    * Optional: Tower middleware, like rate limiting, concurrency limits
+    * Add compression for non-local hosts?
+    * TLS? Or instructions to set up a reverse proxy.
+    * Typed DRY route building?? Could just regex the path.
 
 ### Documentation
 * bin/set-env

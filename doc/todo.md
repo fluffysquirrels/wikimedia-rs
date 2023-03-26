@@ -2,16 +2,12 @@
 
 ## WIP
 
-* Bug: full rebuild when outside ~/wmd running wmd?
 
 ## Must do before publishing
 
-* Bug: better error for no pandoc
+* Support `cargo install` wmd / wikimedia-downloader
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
 * dump::download
-    * Set user-agent  
-      `wmd-{cli,web}/${CARGO_PACKAGE_VERSION} (https://github.com/fluffysquirrels/wikimedia-downloader; alex.helfet@gmail.com) wmd/${CARGO_PACKAGE_VERSION}`  
-      https://m.mediawiki.org/wiki/API:Etiquette#The_User-Agent_header
 * store::chunk
     * Lock chunk store for writing during import.
         * Need to avoid simulataneous imports trying to write to the same chunk file.
@@ -19,16 +15,31 @@
         * https://docs.rs/file-lock/latest/file_lock/
 * wikitext to HTML
     * remove active content (e.g. JavaScript)
+        * https://docs.rs/ammonia/3.3.0/ammonia/
     * Internal links to headings are broken. They're rewritten like  
       `http://localhost:8089/enwiki/page/by-title/#Upright`
+    * Test: Batch render all pages.
+        * pandoc error rendering (dump enwiki/20230301/articlesdump)
+        `{
+  "ns_id": 0,
+  "id": 62585868,
+  "title": "Suga's Interlude",
+  "revision": {
+    "id": 35936988,`
+
 * web
+    * 404 page for no route match
     * 404 page for pages by slug should link to enwiki.
     * Error page template in HTML
     * Error logging for WebError.
     * Browsable
     * Don't show error details to non-local hosts
-    * HTML template
+    * HTML template for pages and other HTML (index, categories list page, category pages list)
     * HTML templating lib?
+        * https://blog.logrocket.com/top-3-templating-libraries-for-rust/
+            * Tera https://tera.netlify.app/docs/
+            * handlebars
+            * Liquid
     * Request log
     * PoisonError after panic on todo! in a page handler.
         * Should exit, let the process supervisor restart us.
@@ -352,6 +363,7 @@ bin/generate-completions && exec zsh
 
 ### Code quality
 
+* Covering indexes for index operations.
 * newtype tuple structs
     * MediawikiId
     * NamespaceId
@@ -373,7 +385,6 @@ bin/generate-completions && exec zsh
     * Performance
 * Use anyhow macros: bail, format_err.
 * Split web server and cli tool?
-* https://crates.io/crates/reqwest-tracing
 * Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
     * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation

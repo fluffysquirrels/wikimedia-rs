@@ -55,16 +55,16 @@ pub struct Options {
 
 #[derive(Clone, Copy, Debug)]
 pub struct StorePageId {
-    chunk_id: ChunkId,
-    page_chunk_idx: PageChunkIndex,
+    pub(in crate::store) chunk_id: ChunkId,
+    pub(in crate::store) page_chunk_index: PageChunkIndex,
 }
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd, Serialize, Valuable)]
 #[serde(transparent)]
-pub struct ChunkId(u64);
+pub struct ChunkId(pub(in crate::store) u64);
 
 #[derive(Clone, Copy, Debug)]
-pub struct PageChunkIndex(u64);
+pub struct PageChunkIndex(pub(in crate::store) u64);
 
 pub struct MappedChunk {
     id: ChunkId,
@@ -146,7 +146,7 @@ impl FromStr for StorePageId {
 
         Ok(StorePageId {
             chunk_id: ChunkId(segments[0].parse::<u64>()?),
-            page_chunk_idx: PageChunkIndex(segments[1].parse::<u64>()?),
+            page_chunk_index: PageChunkIndex(segments[1].parse::<u64>()?),
         })
     }
 }
@@ -155,8 +155,8 @@ impl Display for StorePageId {
     fn fmt(&self,
            f: &mut fmt::Formatter
     ) -> StdResult<(), fmt::Error> {
-        let StorePageId { chunk_id, page_chunk_idx } = self;
-        write!(f, "{chunk_id}.{page_chunk_idx}")
+        let StorePageId { chunk_id, page_chunk_index } = self;
+        write!(f, "{chunk_id}.{page_chunk_index}")
     }
 }
 
@@ -172,7 +172,7 @@ impl TryFrom<&[u8]> for StorePageId {
             chunk_id: ChunkId(
                 u64::from_be_bytes(b[0..8].try_into()
                                           .expect("already checked b.len()"))),
-            page_chunk_idx: PageChunkIndex(
+            page_chunk_index: PageChunkIndex(
                 u64::from_be_bytes(b[8..16].try_into()
                                            .expect("already checked b.len()"))),
         })
@@ -183,7 +183,7 @@ impl StorePageId {
     pub fn to_bytes(&self) -> [u8; 16] {
         let mut out = [0u8; 16];
         out[0..8].copy_from_slice(self.chunk_id.0.to_be_bytes().as_ref());
-        out[8..16].copy_from_slice(self.page_chunk_idx.0.to_be_bytes().as_ref());
+        out[8..16].copy_from_slice(self.page_chunk_index.0.to_be_bytes().as_ref());
         out
     }
 }
@@ -275,7 +275,7 @@ impl Store {
 
     pub fn get_page_by_store_id(&self, id: StorePageId) -> Result<Option<MappedPage>> {
         let chunk: MappedChunk = try2!(self.map_chunk(id.chunk_id));
-        let page: MappedPage = chunk.get_mapped_page(id.page_chunk_idx)?;
+        let page: MappedPage = chunk.get_mapped_page(id.page_chunk_index)?;
         Ok(Some(page))
     }
 
@@ -381,7 +381,7 @@ impl<'store> Builder<'store> {
         let idx = self.pages.len() - 1;
         Ok(StorePageId {
             chunk_id: self.chunk_id,
-            page_chunk_idx: PageChunkIndex(idx.try_into().expect("usize as u64")),
+            page_chunk_index: PageChunkIndex(idx.try_into().expect("usize as u64")),
         })
     }
 
@@ -451,7 +451,7 @@ impl MappedChunk {
         Ok(MappedPage {
             store_id: StorePageId {
                 chunk_id: self.id,
-                page_chunk_idx: idx
+                page_chunk_index: idx
             },
             chunk: self,
         })
@@ -468,7 +468,7 @@ impl MappedChunk {
                              (
                                  StorePageId {
                                      chunk_id: self.id,
-                                     page_chunk_idx: PageChunkIndex(
+                                     page_chunk_index: PageChunkIndex(
                                          idx.try_into().expect("usize as u64")),
                                  },
                                  page
@@ -491,7 +491,7 @@ impl MappedChunk {
 
 impl MappedPage {
     pub fn borrow<'a>(&'a self) -> Result<wmc::page::Reader<'a>> {
-        self.chunk.get_page(self.store_id.page_chunk_idx)
+        self.chunk.get_page(self.store_id.page_chunk_index)
     }
 
     pub fn store_id(&self) -> StorePageId {

@@ -1,3 +1,4 @@
+use askama::Template;
 use axum::{
     extract::{Path, Query, State},
     headers::ContentType,
@@ -19,7 +20,7 @@ use futures::future::{self, Either};
 use serde::Deserialize;
 use std::{
     any::Any,
-    fmt::{self, Display, Write},
+    fmt::{self, Display},
     future::Future,
     net::SocketAddr,
     result::Result as StdResult,
@@ -51,12 +52,14 @@ pub async fn main(args: Args) -> Result<()> {
     };
 
     let app = Router::new()
-        .route("/", routing::get(get_root))
-        .route("/:dump_name/category", routing::get(get_category))
-        .route("/:dump_name/category/by-name/:category_slug", routing::get(get_category_by_slug))
+        .route("/", routing::get(get_index))
+        .route("/:dump_name/category", routing::get(get_categories))
+        .route("/:dump_name/category/by-name/:category_slug",
+               routing::get(get_category_by_slug))
         .route("/:dump_name/page/by-id/:page_id", routing::get(get_page_by_id))
         .route("/:dump_name/page/by-store-id/:page_store_id", routing::get(get_page_by_store_id))
-        .route("/:dump_name/page/by-title/:page_slug", routing::get(get_page_by_title))
+        .route("/:dump_name/page/by-title/:page_slug", routing::get(get_page_by_slug))
+        .route("/test_panic", routing::get(|| async { panic!("Test panic") }))
 
         // .layer(
         //     tower::ServiceBuilder::new()
@@ -108,7 +111,7 @@ impl IntoResponse for WebError {
 
 impl From<anyhow::Error> for WebError {
     fn from(e: anyhow::Error) -> WebError {
-        WebError(error_response(&&*format!("Error: {e}")))
+        WebError(_500_response(&&*format!("Error: {e:#}")))
     }
 }
 
@@ -120,7 +123,12 @@ impl From<fmt::Error> for WebError {
 
 impl<T> From<std::sync::PoisonError<std::sync::MutexGuard<'_, T>>> for WebError {
     fn from(_e: std::sync::PoisonError<std::sync::MutexGuard<'_, T>>) -> WebError {
-        WebError(error_response(&"PoisonError unlocking Mutex in web module"))
+        // PoisonError is from trying to unlock a poisoned mutex. It
+        // contains the MutexGuard in case you want to clear the poison and continue.
+        // However MutexGuard is not Send, and axum wants errors from handlers to be Send.
+        // So we special case this conversion from sync::PoisonError<MutexGuard>
+        // to ignore the inner value and make sure we are Send.
+        WebError(_500_response(&"PoisonError unlocking Mutex in web module"))
     }
 }
 
@@ -129,19 +137,53 @@ impl<E> From<E> for WebError
     where E: std::error::Error + Send + Sync + 'static
 {
     fn from(e: E) -> WebError {
-        WebError(error_response(&*format!("Error: {e}")))
+        WebError(_500_response(&*format!("Error: {e}")))
     }
 }
 
-fn error_response(msg: &dyn Display) -> Response {
-    (
-        // TODO: Render as HTML
-        // TODO: Only show for localhost
-        // TypedHeader(ContentType::html()),
+#[derive(askama::Template)]
+#[template(path = "error.html")]
+struct ErrorHtml<'a> {
+    title: &'static str,
+    message: &'a str,
+}
 
-        StatusCode::INTERNAL_SERVER_ERROR,
-        TypedHeader(ContentType::text_utf8()),
-        msg.to_string()
+fn _500_response(msg: &dyn Display) -> Response {
+    error_response("Error", msg, StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+fn _404_response(msg: &dyn Display) -> Response {
+    error_response("Not found", msg, StatusCode::NOT_FOUND)
+}
+
+fn error_response(title: &'static str, msg: &dyn Display, status: StatusCode) -> Response {
+    let msg = msg.to_string();
+
+    let template = ErrorHtml {
+        title: title,
+        message: &*msg,
+    };
+
+    let html = match template.render() {
+        Ok(html) => html,
+        Err(e) => format!(
+            "<html>\
+             <head>\
+             <title>{title}</title>\
+             </head>\
+             <body>\
+             <h1>{title}</h1>\
+             <pre>{msg}</pre>\
+             <p>Additional error rendering the error:</p>\
+             <pre>{e}</pre>\
+             </body>\
+             </html>"),
+    };
+
+    (
+        status,
+        TypedHeader(ContentType::html()),
+        html,
     ).into_response()
 }
 
@@ -156,21 +198,19 @@ fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response {
 
     tracing::error!("panic: {s}");
 
-    error_response(&format!("panic: {s}"))
+    _500_response(&format!("panic: {s}"))
 }
 
-async fn get_root() -> impl IntoResponse {
-    response::Html(format!(
-        r#"
-               <html>
-               <body>
-                   <p><a href="/enwiki/page/by-store-id/0.0">enwiki 0.0</a></p>
-                   <p><a href="/enwiki/category">enwiki categories</a></p>
-                   <p><a href="/enwiki/page/by-title/The_Matrix">The Matrix</a></p>
-                   <p><a href="/enwiki/page/by-id/30007">enwiki 30007</a></p>
-               </body>
-               </html>
-          "#))
+#[derive(askama::Template)]
+#[template(path = "index.html")]
+struct IndexHtml<'a>{
+    title: &'a str,
+}
+
+async fn get_index() -> impl IntoResponse {
+    IndexHtml {
+        title: "Index",
+    }
 }
 
 #[derive(Deserialize)]
@@ -179,7 +219,17 @@ struct GetCategoryQuery {
     slug_lower_bound: Option<String>,
 }
 
-async fn get_category(
+#[derive(askama::Template)]
+#[template(path = "categories.html")]
+struct CategoriesHtml<'a> {
+    title: &'a str,
+    dump_name: String,
+
+    categories: Vec<CategorySlug>,
+    show_more_href: Option<String>,
+}
+
+async fn get_categories(
     State(state): State<Arc<WebState>>,
     Path(dump_name): Path<String>,
     Query(query): Query<GetCategoryQuery>
@@ -192,56 +242,51 @@ async fn get_category(
             query.slug_lower_bound.as_ref().map(|s| CategorySlug(s.clone())).as_ref(),
             Some(limit))?;
 
-    let mut html: String = r#"
-        <html>
-        <head>
-          <title>Categories | wmd</title>
-        </head>
-        <body>
-          <h1>Categories</h1>
-    "#.to_string();
-
     let last_slug = categories.last().cloned();
     let len = u64::try_from(categories.len()).expect("u64 from usize");
 
-    for category in categories.into_iter() {
-        write!(html, r#"
-                        <p><a href="/{dump_name}/category/by-name/{slug}">{slug}</a></p>"#,
-               slug = html_escape::encode_safe(&*category.0))?;
-    }
+    let show_more_href =
+        if let Some(CategorySlug(slug_lower_bound)) = last_slug {
+            if limit == len {
+                let limit_pair = match query.limit {
+                    Some(limit) => format!("&limit={}", limit),
+                    None => "".to_string(),
+                };
 
-    if let Some(CategorySlug(slug)) = last_slug {
-        if limit == len {
-            let limit_pair = match query.limit {
-                Some(limit) => format!("&limit={}", limit),
-                None => "".to_string(),
-            };
+                Some(format!(
+                    "/{dump_name}/category?slug_lower_bound={slug_lower_bound}{limit_pair}"))
+            } else { None }
+        } else { None };
 
-            write!(html, r#"<p><a href="/{dump_name}/category?slug_lower_bound={slug_lower_bound}{limit}">
-                               More</a>
-                        </p>"#,
-                   slug_lower_bound = html_escape::encode_safe(&*slug),
-                   limit = limit_pair)?;
-        }
-    }
+    Ok(CategoriesHtml {
+        title: "Categories",
+        dump_name,
 
-    write!(html, r#"
-                    </body>
-                    </html>"#)?;
-
-    Ok(response::Html(html))
+        categories,
+        show_more_href,
+    })
 }
 
 #[derive(Deserialize)]
-struct GetCategoryByNameQuery {
+struct GetCategoryBySlugQuery {
     limit: Option<u64>,
     page_mediawiki_id_lower_bound: Option<u64>,
+}
+
+#[derive(askama::Template)]
+#[template(path = "category.html")]
+struct CategoryHtml {
+    title: String,
+    dump_name: String,
+
+    pages: Vec<index::Page>,
+    show_more_href: Option<String>,
 }
 
 async fn get_category_by_slug(
     State(state): State<Arc<WebState>>,
     Path((dump_name, category_slug)): Path<(String, String)>,
-    Query(query): Query<GetCategoryByNameQuery>,
+    Query(query): Query<GetCategoryBySlugQuery>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
     let limit = query.limit.unwrap_or(index::MAX_LIMIT).min(index::MAX_LIMIT);
@@ -253,43 +298,30 @@ async fn get_category_by_slug(
         Some(limit),
     )?;
 
-    let mut html: String = format!(r#"
-        <html>
-        <head>
-          <title>Category:{category_slug} | wmd</title>
-        </head>
-        <body>
-          <h1>Category:{category_slug}</h1>
-    "#,
-        category_slug = html_escape::encode_safe(&*category_slug));
-
     let page_mediawiki_id_lower_bound = pages.last().map(|page| page.mediawiki_id);
     let len = u64::try_from(pages.len()).expect("u64 from usize");
 
-    for page in pages.into_iter() {
-        write!(html, r#"
-                        <p><a href="/{dump_name}/page/by-title/{slug}">{slug}</a></p>"#,
-               slug = html_escape::encode_safe(&*page.slug))?;
-    }
+    let show_more_href =
+        if let Some(page_mediawiki_id_lower_bound) = page_mediawiki_id_lower_bound {
+            if len == limit {
+                let limit_pair = match query.limit {
+                    Some(limit) => format!("&limit={}", limit),
+                    None => "".to_string(),
+                };
 
-    if let Some(page_mediawiki_id_lower_bound) = page_mediawiki_id_lower_bound {
-        if len == limit {
-            let limit_pair = match query.limit {
-                Some(limit) => format!("&limit={}", limit),
-                None => "".to_string(),
-            };
+                Some(format!("/{dump_name}/category/by-name/{category_slug}\
+                              ?page_mediawiki_id_lower_bound={page_mediawiki_id_lower_bound}\
+                              {limit_pair}"))
+            } else { None }
+        } else { None };
 
-            write!(html, r#"<p><a href="/{dump_name}/category/by-name/{category_slug}?page_mediawiki_id_lower_bound={page_mediawiki_id_lower_bound}{limit}">
-                               More</a>
-                        </p>"#,
-                   category_slug = html_escape::encode_safe(&*category_slug),
-                   limit = limit_pair)?;
-        }
-    }
+    Ok(CategoryHtml {
+        title: format!("Category:{category_slug}"),
+        dump_name,
 
-    write!(html, "\n</body>\n</html>")?;
-
-    Ok(response::Html(html))
+        pages,
+        show_more_href,
+    })
 }
 
 #[axum::debug_handler]
@@ -298,16 +330,9 @@ async fn get_page_by_id(
     Path((_dump_name, page_id)): Path<(String, u64)>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
-    let Some(page_cap) = state.store.lock()?.get_page_by_mediawiki_id(page_id)? else {
-        return Ok(
-            (
-                StatusCode::NOT_FOUND, // 404
-                "Page not found by page ID",
-            ).into_response()
-        );
-    };
+    let page = state.store.lock()?.get_page_by_mediawiki_id(page_id)?;
 
-    response_from_mapped_page(page_cap, &*state).await
+    response_from_mapped_page(page, &*state).await
 }
 
 async fn get_page_by_store_id(
@@ -317,41 +342,31 @@ async fn get_page_by_store_id(
 
     let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
-    let Some(page_cap) = state.store.lock()?.get_page_by_store_id(page_store_id)? else {
-        return Ok(
-            (
-                StatusCode::NOT_FOUND, // 404
-                "Page not found by store page ID",
-            ).into_response()
-        );
-    };
+    let page = state.store.lock()?.get_page_by_store_id(page_store_id)?;
 
-    response_from_mapped_page(page_cap, &*state).await
+    response_from_mapped_page(page, &*state).await
 }
 
-async fn get_page_by_title(
+async fn get_page_by_slug(
     State(state): State<Arc<WebState>>,
     Path((_dump_name, page_slug)): Path<(String, String)>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
-    let Some(page_cap) = state.store.lock()?.get_page_by_slug(&*page_slug)? else {
-        return Ok(
-            (
-                StatusCode::NOT_FOUND, // 404
-                "Page not found by title",
-            ).into_response()
-        );
-    };
+    let page = state.store.lock()?.get_page_by_slug(&*page_slug)?;
 
-    response_from_mapped_page(page_cap, &*state).await
+    response_from_mapped_page(page, &*state).await
 }
 
-fn response_from_mapped_page(mapped_page: store::MappedPage, state: &WebState
+fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
 ) -> impl Future<Output = StdResult<Response, WebError>> + Send {
-    let store_page_id = mapped_page.store_id();
-    let page_cap = match mapped_page.borrow() {
+    let Some(page) = page else {
+        return Either::Left(Either::Left(future::ok(_404_response(&"Page not found"))));
+    };
+
+    let store_page_id = page.store_id();
+    let page_cap = match page.borrow() {
         Ok(p) => p,
-        Err(e) => return Either::Left(Either::Left(future::err(e.into()))),
+        Err(e) => return Either::Left(Either::Right(future::err(e.into()))),
     };
     let page = match dump::Page::try_from(&page_cap) {
         Ok(p) => p,

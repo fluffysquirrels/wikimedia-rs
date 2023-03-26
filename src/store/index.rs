@@ -10,11 +10,15 @@ use crate::{
     dump::{self, CategorySlug},
     Result,
     slug,
-    store::StorePageId,
+    store::{
+        chunk::{ChunkId, PageChunkIndex},
+        StorePageId,
+    },
 };
-use rusqlite::{config::DbConfig, Connection, OpenFlags, Row, Transaction, TransactionBehavior};
-use sea_query::{BlobSize, ColumnDef, enum_def, Expr, InsertStatement, OnConflict, Query,
-                SimpleExpr, SqliteQueryBuilder, Table};
+use rusqlite::{config::DbConfig, Connection, OpenFlags, OptionalExtension, Transaction,
+               TransactionBehavior};
+use sea_query::{ColumnDef, enum_def, Expr, InsertStatement, OnConflict, Query,
+                SelectStatement, SimpleExpr, SqliteQueryBuilder, Table};
 use sea_query_rusqlite::{RusqliteBinder, RusqliteValues};
 use std::{
     fs,
@@ -36,8 +40,7 @@ pub(in crate::store) struct Options {
     pub path: PathBuf,
 }
 
-pub(in crate::store) struct ImportBatchBuilder<'index>
-{
+pub(in crate::store) struct ImportBatchBuilder<'index> {
     index: &'index Index,
     category_batch: BatchInsert,
     page_batch: BatchInsert,
@@ -54,9 +57,11 @@ struct BatchInsert {
 
 #[derive(Clone, Debug)]
 #[enum_def]
+#[allow(dead_code)] // The private fields are using in PageIden (generated from this).
 pub struct Page {
     pub mediawiki_id: u64,
-    pub store_id: StorePageId,
+    chunk_id: u64,
+    page_chunk_index: u64,
     pub slug: String,
 }
 
@@ -76,6 +81,16 @@ struct Category {
 }
 
 pub const MAX_LIMIT: u64 = 100;
+
+impl Page {
+    #[allow(dead_code)] // Not used yet.
+    pub fn store_id(&self) -> StorePageId {
+        StorePageId {
+            chunk_id: ChunkId(self.chunk_id),
+            page_chunk_index: PageChunkIndex(self.page_chunk_index),
+        }
+    }
+}
 
 impl Options {
     pub fn build(self) -> Result<Index> {
@@ -113,7 +128,7 @@ impl Index {
         conn.set_db_config(DbConfig::SQLITE_DBCONFIG_DEFENSIVE, true)?;
         conn.set_db_config(DbConfig::SQLITE_DBCONFIG_ENABLE_FKEY, true)?;
 
-        conn.trace(Some(|s: &str| tracing::debug!(sql = s, "Index::conn::trace")));
+        conn.trace(Some(|s: &str| tracing::trace!(sql = s, "Index::conn::trace")));
 
         // TODO: more safety pragmas.
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -143,8 +158,11 @@ impl Index {
                             .integer()
                             .not_null()
                             .primary_key())
-                    .col(ColumnDef::new(PageIden::StoreId)
-                            .blob(BlobSize::Blob(Some(16)))
+                    .col(ColumnDef::new(PageIden::ChunkId)
+                            .integer()
+                            .not_null())
+                    .col(ColumnDef::new(PageIden::PageChunkIndex)
+                            .integer()
                             .not_null())
                     .col(ColumnDef::new(PageIden::Slug)
                             .text()
@@ -156,6 +174,8 @@ impl Index {
                     .if_not_exists()
                     .table(PageIden::Table)
                     .col(PageIden::Slug)
+                    .col(PageIden::ChunkId)
+                    .col(PageIden::PageChunkIndex)
                     .unique()
                     .build(SqliteQueryBuilder),
 
@@ -298,7 +318,8 @@ impl Index {
 
         let (sql, params) = Query::select()
             .column((PageIden::Table, PageIden::MediawikiId))
-            .column((PageIden::Table, PageIden::StoreId))
+            .column((PageIden::Table, PageIden::ChunkId))
+            .column((PageIden::Table, PageIden::PageChunkIndex))
             .column((PageIden::Table, PageIden::Slug))
             .from(PageCategoriesIden::Table)
             .inner_join(PageIden::Table,
@@ -325,8 +346,9 @@ impl Index {
         while let Some(row) = rows.next()? {
             let page = Page {
                 mediawiki_id: row.get(0)?,
-                store_id: Self::row_to_store_id(&row, 1)?,
-                slug: row.get(2)?,
+                chunk_id: row.get(1)?,
+                page_chunk_index: row.get(2)?,
+                slug: row.get(3)?,
             };
 
             out.push(page);
@@ -335,50 +357,44 @@ impl Index {
         Ok(out)
     }
 
-    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub fn get_store_page_id_by_mediawiki_id(&self, id: u64) -> Result<Option<StorePageId>> {
-        let (sql, params) = Query::select()
+        let query = Query::select()
             .from(PageIden::Table)
-            .column(PageIden::StoreId)
+            .column(PageIden::ChunkId)
+            .column(PageIden::PageChunkIndex)
             .and_where(Expr::col(PageIden::MediawikiId).eq(id))
-            .build_rusqlite(SqliteQueryBuilder);
-        let params2 = &*params.as_params();
-
-        let conn = self.conn()?;
-
-        let store_id =
-            conn.query_row_and_then(
-                &*sql, params2,
-                |row: &Row|
-                Self::row_to_store_id(row, 0))?;
-
-        Ok(Some(store_id))
+            .take();
+        self.single_row_select_to_store_page_id(query)
     }
 
-    #[tracing::instrument(level = "trace", skip(self), ret)]
     pub fn get_store_page_id_by_slug(&self, slug: &str) -> Result<Option<StorePageId>> {
-        let (sql, params) = Query::select()
+        let query = Query::select()
             .from(PageIden::Table)
-            .column(PageIden::StoreId)
+            .column(PageIden::ChunkId)
+            .column(PageIden::PageChunkIndex)
             .and_where(Expr::col(PageIden::Slug).eq(slug))
-            .build_rusqlite(SqliteQueryBuilder);
+            .take();
+        self.single_row_select_to_store_page_id(query)
+    }
+
+    fn single_row_select_to_store_page_id(&self, select: SelectStatement
+    ) -> Result<Option<StorePageId>>
+    {
+        let (sql, params) = select.build_rusqlite(SqliteQueryBuilder);
         let params2 = &*params.as_params();
 
         let conn = self.conn()?;
 
-        let store_id =
-            conn.query_row_and_then(
-                &*sql, params2,
-                |row: &Row|
-                Self::row_to_store_id(row, 0))?;
-
-        Ok(Some(store_id))
-    }
-
-    fn row_to_store_id(row: &Row, index: usize) -> Result<StorePageId> {
-        let store_id_bytes: [u8; 16] = row.get(index)?;
-        let store_id = StorePageId::try_from(store_id_bytes.as_slice())?;
-        Ok(store_id)
+        conn.query_row(
+            &*sql, params2,
+            |row| -> rusqlite::Result<StorePageId> {
+                Ok(StorePageId {
+                    chunk_id: ChunkId(row.get(0)?),
+                    page_chunk_index: PageChunkIndex(row.get(1)?),
+                })
+            }
+        ).optional()
+         .map_err(|e| e.into())
     }
 }
 
@@ -439,7 +455,10 @@ impl<'index> ImportBatchBuilder<'index> {
             page_batch: BatchInsert::new(
                 || Query::insert()
                        .into_table(PageIden::Table)
-                       .columns([PageIden::MediawikiId, PageIden::StoreId, PageIden::Slug])
+                       .columns([PageIden::MediawikiId,
+                                 PageIden::ChunkId,
+                                 PageIden::PageChunkIndex,
+                                 PageIden::Slug])
                        .on_conflict(OnConflict::new().do_nothing().to_owned())
                        .to_owned(),
                 index.opts.max_values_per_batch),
@@ -454,12 +473,12 @@ impl<'index> ImportBatchBuilder<'index> {
     }
 
     pub fn push(&mut self, page: &dump::Page, store_page_id: StorePageId) -> Result<()> {
-        let store_page_id_bytes = store_page_id.to_bytes();
         let page_slug = slug::title_to_slug(&*page.title);
 
         self.page_batch.push_values([
             page.id.into(),
-            (store_page_id_bytes.as_slice()).into(),
+            store_page_id.chunk_id.0.into(),
+            store_page_id.page_chunk_index.0.into(),
             page_slug.into()
         ])?;
 

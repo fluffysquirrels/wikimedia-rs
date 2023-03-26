@@ -1,4 +1,4 @@
-use anyhow::{bail, format_err};
+use anyhow::{bail, Context, format_err};
 use crate::{
     args::CommonArgs,
     dump::{self, CategoryName},
@@ -25,7 +25,7 @@ pub async fn convert_page_to_html(
 
     // Write Lua filter
 
-    // TODO; Encode this as a Lua string literal.
+    // TODO: Escape these as a Lua string literal.
     let page_by_title: &str = "/enwiki/page/by-title/";
     let category_by_name: &str = "/enwiki/category/by-name/";
     let enwiki_page_by_title: &str = "https://en.wikipedia.org/wiki/";
@@ -90,24 +90,25 @@ pub async fn convert_page_to_html(
 
     let mut child =
         tokio::process::Command::new("pandoc")
-        .args(&[
-            "--from", "mediawiki",
-            "--to", "html",
-            "--sandbox",
-            "--standalone",
-            "--toc",
-            "--number-sections",
-            "--number-offset", "1",
-            "--metadata", &*format!("pagetitle:{} | wmd", html_title), // goes in <head><title>
-            "--metadata", &*format!("title:{}", html_title), // goes in <h1>
-            "--lua-filter", &*lua_filter_path.to_string_lossy(),
-            "--include-in-header", &*header_suffix_path.to_string_lossy(),
-            "--include-before-body", &*body_prefix_path.to_string_lossy(),
-        ])
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+            .args(&[
+                "--from", "mediawiki",
+                "--to", "html",
+                "--sandbox",
+                "--standalone",
+                "--toc",
+                "--number-sections",
+                "--number-offset", "1",
+                "--metadata", &*format!("pagetitle:{} | wmd", html_title), // goes in <head><title>
+                "--metadata", &*format!("title:{}", html_title), // goes in <h1>
+                "--lua-filter", &*lua_filter_path.to_string_lossy(),
+                "--include-in-header", &*header_suffix_path.to_string_lossy(),
+                "--include-before-body", &*body_prefix_path.to_string_lossy(),
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("While starting pandoc. Is it installed and on your path?")?;
 
     let mut child_stdin =
         child.stdin.take().ok_or(format_err!("Failed to open stdin"))?;

@@ -1,0 +1,15 @@
+{% extends "_base.html" %}
+
+{% block content %}
+
+{% for page in pages %}
+  <p><a href="/{{ dump_name }}/page/by-title/{{ page.slug }}">{{ page.slug }}</a></p>
+{% endfor %}
+
+{% match show_more_href %}
+  {% when Some with (href) %}
+    <p><a href="{{ href }}">More</a></p>
+  {% when None %}
+{% endmatch %}
+
+{% endblock %}

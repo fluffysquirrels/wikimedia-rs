@@ -115,10 +115,10 @@ pub fn download_client(_args: &args::CommonArgs) -> Result<Client> {
 
 fn inner_client_common() -> Result<reqwest::ClientBuilder> {
     Ok(reqwest::ClientBuilder::new()
-           .user_agent(concat!(
-               env!("CARGO_PKG_NAME"),
-               "/",
-               env!("CARGO_PKG_VERSION"),))
+           .user_agent(format!("{pkg}/{version} ({repo}; alex.helfet@gmail.com)",
+                               pkg = env!("CARGO_PKG_NAME"),
+                               version = env!("CARGO_PKG_VERSION"),
+                               repo = env!("CARGO_PKG_REPOSITORY")))
            .connect_timeout(Duration::from_secs(10))
     )
 }

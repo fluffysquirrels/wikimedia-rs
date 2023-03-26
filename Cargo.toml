@@ -5,6 +5,15 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/fluffysquirrels/wikimedia-downloader"
 
+include = [
+    ".cargo/config.toml",
+    "capnp/**",
+    "Cargo.lock",
+    "Cargo.toml",
+    "src/**/*.rs",
+    "web-templates/**",
+]
+
 [[bin]]
 name = "wmd"
 path = "src/main.rs"
@@ -35,6 +44,7 @@ mime = "0.3.16"
 memmap2 = "0.5.10"
 natord = "1.0.9"
 once_cell = "1.17.1"
+platform-dirs = "0.3.0"
 quick-xml = "0.27.1"
 rand = "0.8.5"
 rayon = "1.7.0"

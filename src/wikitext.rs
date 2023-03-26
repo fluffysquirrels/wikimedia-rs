@@ -20,7 +20,7 @@ pub async fn convert_page_to_html(
 
     let pandoc_start = Instant::now();
 
-    let temp_dir = TempDir::create(&*common_args.out_dir, /* keep: */ false)?;
+    let temp_dir = TempDir::create(&*common_args.out_dir(), /* keep: */ false)?;
 
     // Write Lua filter
 

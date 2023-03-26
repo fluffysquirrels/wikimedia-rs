@@ -5,7 +5,15 @@
 
 ## Must do before publishing
 
-* Support `cargo install` wmd / wikimedia-downloader
+* Support `cargo install` wmdl / wikimedia-downloader?
+    * Out dir
+        * Possible: On first use prompt for default out path and save it to a config file
+        * Or fall back to user data dir
+    * Mirror selection?
+    * Build without capnp.
+        * Use build.rs?
+        * Commit generated capnp rust files?
+        * Put generated capnp rust files in crates.io archive?
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
 * store::chunk
     * Lock chunk store for writing during import.
@@ -20,13 +28,34 @@
     * Internal links to headings are broken. They're rewritten like  
       `http://localhost:8089/enwiki/page/by-title/#Upright`
     * Test: Batch render all pages.
-        * pandoc error rendering (dump enwiki/20230301/articlesdump)
+        * pandoc error during rendering for this page (from dump enwiki/20230301/articlesdump):
         `{
   "ns_id": 0,
   "id": 62585868,
   "title": "Suga's Interlude",
   "revision": {
     "id": 35936988,`
+* Documentation:
+    * Pre-requisites for build and run.
+        * capnp, capnp-rust on path
+        * pandoc on path
+    * Quick start from zero to web.
+    * bin scripts
+    * Mirror selection and rationale
+    * Top level module documentation
+    * Platforms tested
+    * Architecture (basics of crate and module layout)
+    * out-dir layout
+    * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
+    ```
+    CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
+    wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
+    ```
+    * Shell completion script setup.
+    ```
+    bin/generate-completions && exec zsh
+    ```
+
 
 * web
     * 404 page for no route match
@@ -34,7 +63,10 @@
     * Error logging for WebError.
     * Browsable
     * Don't show error details to non-local hosts
-    * Request log
+    * Separate web request log
+        * Optional apache format?
+        * JSON bunyan or similar
+
     * PoisonError after panic on todo! in a page handler.
         * Should exit, let the process supervisor restart us.
     * https://github.com/tower-rs/tower-http
@@ -91,8 +123,8 @@
     * store
     * CLI (and maybe web?)
 * Maybe: create or document symlinks like I have them
-    * out/job -> dump/articlesdump/
     * out/version -> dumps/enwiki/20230301/
+    * out/job -> version/articlesdump/
 * Replicate a wikimedia site in semi-real time using API
 * Fetch from API on demand
 * Batch import from API
@@ -118,6 +150,8 @@
     * Cancellation support
     * Progress bar
         * Crate [`indicatif`](https://crates.io/crates/indicatif) looks good.
+            * Breaks when logs are written too.
+        * Or progress logs with ETA is probably fine too.
     * Configurable timeout
 * Some way to handle multiple stores when we are importing a new version
     * Could be as simple as writing new store to
@@ -127,7 +161,7 @@
     * Separate stores per (dump,version)?
 * Improve import
     * Restartable / checkpointed / idempotent
-    * Progress reporting, ETA
+    * Progress reporting, ETA. https://docs.rs/progress-streams/latest/progress_streams/
     * One shot download and import, option to keep raw dumps or only
       have one on disk during import.
     * Import while web app is running
@@ -235,7 +269,6 @@
     * sqlite compilation options
         * https://www.sqlite.org/compile.html#enable_stat4
     * Maybe clear() should delete the files and re-open?
-* On first use prompt for default out path and save it to a config file
 * web
     * Optional: Tower middleware, like rate limiting, concurrency limits
     * Add compression for non-local hosts?
@@ -243,27 +276,10 @@
     * Typed DRY route building?? Could just regex the path.
 
 ### Documentation
-* bin/set-env
-* Mirror selection and rationale
-* Item documentation
-* Pre-requisites for build and run.
-    * capnp, capnp-rust on path
-    * pandoc on path
-* Platforms tested
-* Architecture (basics of crate and module layout)
-* Logging to JSON, reading with `node-bunyan` or `bunyan-view`
-```
-CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
-wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
-```
-* Document shell completion script setup.
-```
-bin/generate-completions && exec zsh
-```
+* Crate item documentation
 * Add brief syntax examples for `--file-name-regex`.
 
 ### Telemetry / observability
-
 * Display custom tracing values (e.g. Duration) differently in console pretty mode.
 * tracing::events for HTTP cache hits and misses, implement CacheManager.
 * tracing complex fields logged as JSON rather than Debug

@@ -1,11 +1,5 @@
 # Notes
 
-* Hacky import for a whole dump job:
-```
-wmd clear-store && \
-    ls -v out/job/*articles*.xml*.bz2 \
-    | xargs -n1 -I% -t wmd import-dump --article-dump-file %
-```
 * Cache metadata downloads
     * Save to `./out/cache`
     * Existing libraries

@@ -40,7 +40,7 @@ struct Args {
     command: Command,
 
     /// Set this flag to enable logging to stderr as JSON. Logs are in a text format by default.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, global = true)]
     log_json: bool,
 }
 

@@ -70,7 +70,7 @@ pub async fn main(args: Args) -> Result<()> {
         job_name,
         args.file_name_regex.value.as_ref()).await?;
 
-    let temp_dir = TempDir::create(&*args.common.out_dir, args.keep_temp_dir)?;
+    let temp_dir = TempDir::create(&*args.common.out_dir(), args.keep_temp_dir)?;
     let download_client = http::download_client(&args.common)?;
 
     let mut download_ok: u64 = 0;
@@ -88,7 +88,7 @@ pub async fn main(args: Args) -> Result<()> {
         let res =
             dump::download::download_job_file(&download_client, dump_name, &version,
                                               job_name, &*args.mirror_url, file_meta,
-                                              &*args.common.out_dir, &temp_dir).await
+                                              &*args.common.out_dir(), &temp_dir).await
                 .with_context(|| format!(
                     "while downloading job file \
                      dump='{dump}' \

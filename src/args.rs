@@ -2,6 +2,7 @@ mod http_cache_mode;
 use http_cache_mode::HttpCacheModeParser;
 
 use anyhow::bail;
+use clap::CommandFactory;
 use crate::{
     dump::{
         DumpName, JobName, Version, VersionSpec,
@@ -21,15 +22,31 @@ use std::{
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct CommonArgs {
+    #[arg(from_global)]
+    log_json: bool,
+
     /// The directory to save the program's output, including downloaded files and HTTP cache.
     ///
-    /// The dump files will be placed in a child directory of this.
-    /// With `--out-dir` set to `./out`, dump file paths will be like:
-    /// `./out/dumps/enwiki/20230301/articlesdump/enwiki-20230301-pages-articles.xml.bz2`
+    /// If not present tries these alternatives in order:
     ///
-    /// If not present tries to read the environment variable `WMD_OUT_DIR`.
+    ///   * Value in environment variable `WMD_OUT_DIR`.
+    ///   * A subdirectory `wmd` under the platform data directory returned by
+    ///     `platform_dirs::AppDirs.data_dir`.
+    ///
+    ///     For Linux this is: `${XDG_DATA_HOME}` if set or `~/.local/share`
+    ///     For Windows this is `%LOCALAPPDATA%` if set or `C:\Users\%USERNAME%\AppData\Local`
+    ///     For macOs this is `~/Library/Application Support`
+    ///
+    ///     See the `platform-dirs` documentation:
+    ///     <https://github.com/cjbassi/platform-dirs-rs/blob/b7a5a9ad4535aa4fb156bfeb9cf887dd2bd696a4/README.md#appdirs.
+    ///
+    /// The dump files downloaded from wikimedia will be placed under the subdirectory `dumps`,
+    /// for example:
+    /// `dumps/enwiki/20230301/articlesdump/enwiki-20230301-pages-articles1.xml.bz2`
+    ///
+    /// The data imported from the dumps will be placed under the subdirectory 'store'.
     #[arg(long, env = "WMD_OUT_DIR")]
-    pub out_dir: PathBuf,
+    out_dir: Option<PathBuf>,
 
     /// HTTP cache mode to use when making requests.
     ///
@@ -128,12 +145,39 @@ pub struct JsonOutputArg {
 }
 
 impl CommonArgs {
+    pub fn out_dir(&self) -> PathBuf {
+        if let Some(dir) = self.out_dir.as_ref() {
+            return dir.clone();
+        }
+
+        // self.out_dir == None
+
+        // Fall back to platform-dirs.
+
+        let Some(dirs) = platform_dirs::AppDirs::new(
+            Some(env!("CARGO_BIN_NAME")) /* app name */,
+            false /* use_xdg_on_macos */) else
+        {
+            let mut cmd = crate::Args::command();
+
+            let err = cmd.error(
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "Tried to fall back and get out-dir from platform_dirs, \
+                 but AppDirs::None returned None. \
+                 Try passing out-dir in environment value `WMD_OUT_DIR` \
+                 or with flag `--out-dir`.");
+            err.exit(); // Exits the process.
+        };
+
+        dirs.data_dir
+    }
+
     pub fn http_cache_path(&self) -> PathBuf {
-        self.out_dir.join("http_cache")
+        self.out_dir().join("http_cache")
     }
 
     pub fn store_path(&self) -> PathBuf {
-        self.out_dir.join("store")
+        self.out_dir().join("store")
     }
 }
 
@@ -198,7 +242,7 @@ impl TryFrom<(CommonArgs, OpenSpecArgs)> for local::OpenSpec {
                        args.job_name.as_ref()) {
                     (Some(dump), Some(version), Some(job)) =>
                         local::SourceSpec::Job(local::JobSpec {
-                            out_dir: common.out_dir,
+                            out_dir: common.out_dir(),
                             dump: dump.value.clone(),
                             version: version.clone(),
                             job: job.value.clone(),

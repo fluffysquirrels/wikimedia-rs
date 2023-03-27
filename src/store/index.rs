@@ -171,8 +171,6 @@ impl Index {
                     .if_not_exists()
                     .table(PageIden::Table)
                     .col(PageIden::Slug)
-                    .col(PageIden::ChunkId)
-                    .col(PageIden::PageChunkIndex)
                     .unique()
                     .build(SqliteQueryBuilder),
 

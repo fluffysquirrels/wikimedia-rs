@@ -57,21 +57,21 @@ pub struct OpenJobFile {
     pub uncompressed_bytes_read: Arc<AtomicU64>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct OpenSpec {
     pub source: SourceSpec,
     pub max_count: Option<u64>,
     pub compression: Compression,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub enum SourceSpec {
     Job(JobSpec),
     Dir(DirSpec),
     File(FileSpec),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct JobSpec {
     pub out_dir: PathBuf,
     pub dump: DumpName,
@@ -80,20 +80,20 @@ pub struct JobSpec {
     pub file_name_regex: Option<UserRegex>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct DirSpec {
     pub path: PathBuf,
     pub file_name_regex: Option<UserRegex>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Valuable)]
 pub struct FileSpec {
     pub compression: Compression,
     pub path: PathBuf,
     pub seek: Option<u64>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Valuable)]
 pub enum Compression {
     Bzip2,
     LZ4,

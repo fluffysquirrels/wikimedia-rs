@@ -104,7 +104,7 @@ pub struct OpenSpecArgs {
     pub job_name: Option<JobNameArg>,
 
     #[arg(long)]
-    pub dump_file: Option<PathBuf>,
+    pub job_file: Option<PathBuf>,
 
     /// Seek to this file offset before reading.
     ///
@@ -218,11 +218,11 @@ impl TryFrom<(CommonArgs, OpenSpecArgs)> for local::OpenSpec {
     type Error = Error;
 
     fn try_from((common, args): (CommonArgs, OpenSpecArgs)) -> Result<local::OpenSpec> {
-        let dump_file = args.dump_file;
+        let job_file = args.job_file;
         let job_dir = args.job_dir;
 
-        let source: local::SourceSpec = match (dump_file, job_dir) {
-            (Some(_), Some(_)) => bail!("You supplied both --dump-file and --job-dir, \
+        let source: local::SourceSpec = match (job_file, job_dir) {
+            (Some(_), Some(_)) => bail!("You supplied both --job-file and --job-dir, \
                                          but should only supply one of these"),
             (Some(file), None) => {
                 local::SourceSpec::File(local::FileSpec {

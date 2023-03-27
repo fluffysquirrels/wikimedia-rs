@@ -81,7 +81,7 @@ pub enum VersionSpec {
     Version(Version),
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Valuable)]
 pub struct JobName(pub String);
 
 #[derive(Clone, Debug, Serialize)]

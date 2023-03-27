@@ -21,6 +21,7 @@ use crate::{
 use rayon::prelude::*;
 use std::{
     fmt::Debug,
+    io::Write,
     path::PathBuf,
     result::Result as StdResult,
     sync::atomic::{AtomicU64, Ordering},
@@ -100,19 +101,26 @@ impl Store {
         let chunk_write_guard = self.chunk_store.try_write_lock()?;
 
         let files = job_files.open_files_par_iter()?;
+        let total_source_bytes = job_files.files_total_len();
+        let num_source_files = job_files.file_specs().len();
+
+        tracing::info!(
+            total_source_bytes = total_source_bytes.as_value(),
+            num_source_files,
+            open_spec = job_files.open_spec().as_value(),
+            "Starting import");
+
+        enum ImportEnd {
+            PageCountMax,
+            Err(Error),
+        }
+
         let index = &self.index;
 
         let chunk_bytes_total = AtomicU64::new(0);
         let chunks_len = AtomicU64::new(0);
         let pages_total = AtomicU64::new(0);
         let total_source_bytes_read = AtomicU64::new(0);
-
-        let total_source_bytes = job_files.files_total_len();
-
-        enum ImportEnd {
-            PageCountMax,
-            Err(Error),
-        }
 
         let end = files.try_for_each(
             |file: Result<OpenJobFile>| -> StdResult<(), ImportEnd> {
@@ -164,6 +172,7 @@ impl Store {
                         },
                     };
 
+                    // fetch_add counters.
                     let chunk_bytes_total_curr =
                         chunk_bytes_total.fetch_add(res.chunk_meta.bytes_len.0, Ordering::SeqCst);
                     let pages_total_curr =
@@ -177,20 +186,85 @@ impl Store {
                         total_source_bytes_read.fetch_add(source_bytes_read_diff,
                                                           Ordering::SeqCst);
 
+                    // Calculate derived stats.
                     let percent_complete =
                         ((total_source_bytes_read_curr as f64) /
                          (total_source_bytes.0 as f64)) * 100.0;
 
-                    // TODO: let est_remaining_duration =
+                    let duration_so_far = start.elapsed();
+                    let total_source_bytes_remaining =
+                        total_source_bytes.0 - total_source_bytes_read_curr;
+
+                    let est_remaining_duration: Option<Duration> =
+                        match total_source_bytes_read_curr {
+                            0 => None,
+                            bytes_done => {
+                                let secs: f64 =
+                                    (duration_so_far.as_secs_f64() / (bytes_done as f64))
+                                        * (total_source_bytes_remaining as f64);
+
+                                let nanos = secs * 1_000_000_000.0;
+                                let dur = std::time::Duration::from_nanos(nanos as u64);
+                                Some(Duration(dur))
+                            }
+                        };
+
+                    let now = chrono::Local::now();
+
+                    let eta: Option<String> = est_remaining_duration.and_then(
+                        |dur| -> Option<String> {
+                            let chrono_time =
+                                now
+                                    + match chrono::Duration::from_std(dur.0) {
+                                        Ok(chrono_dur) => chrono_dur,
+                                        Err(_e) => return None,
+                                    };
+                            let s = chrono_time.to_rfc3339()
+                                               .replace('T', " ");
+                            Some(s)
+                        });
+
+                    let percent_complete_str = format!("{percent_complete:02.1}");
+
+                    let res = writeln!(std::io::stderr(),
+                           "{now}     Import: {percent_complete_str}%\
+                            {remaining_str}\
+                            {eta}",
+                           now = now.to_rfc3339().replace('T', " "),
+                           remaining_str = match est_remaining_duration {
+                               Some(dur) => format!("   remaining: {:.2?}", dur.0),
+                               None => "".to_string(),
+                           },
+                           eta = match eta {
+                               Some(ref eta) => format!("   ETA: {eta}"),
+                               None => "".to_string(),
+                           },
+                    );
+
+                    if let Err(e) = res {
+                        return Err(ImportEnd::Err(e.into()));
+                    }
 
                     tracing::debug!(
+                        // Store current stats
                         chunk_bytes_total = Bytes(chunk_bytes_total_curr).as_value(),
                         pages_total = pages_total_curr,
                         chunks_len = Bytes(chunks_len_curr).as_value(),
+
+                        // Import total raw stats
                         total_source_bytes_read = Bytes(total_source_bytes_read_curr).as_value(),
                         total_source_bytes = total_source_bytes.as_value(),
-                        percent_complete = format!("{percent_complete:.1}%"),
-                        duration_so_far = Duration(start.elapsed()).as_value(),
+                        total_source_bytes_remaining =
+                            Bytes(total_source_bytes_remaining).as_value(),
+                        duration_so_far = Duration(duration_so_far).as_value(),
+
+                        // Import total derived stats
+                        percent_complete,
+                        percent_complete_str,
+                        est_remaining_duration = est_remaining_duration.as_value(),
+                        eta,
+
+                        // This file stats
                         input_file = %file_spec.path.display(),
                         source_bytes_read = Bytes(source_bytes_read_diff).as_value(),
                         // WIP: uncompressed_bytes_read = Bytes(uncompressed_bytes_read_diff.get()),
@@ -215,12 +289,12 @@ impl Store {
             pages_total: pages_total.into_inner(),
         };
 
+        tracing::info!(res = res.as_value(),
+                       "Import done");
+
         if let Err(ImportEnd::Err(e)) = end {
             return Err(e);
         }
-
-        tracing::info!(res = res.as_value(),
-                       "Import done");
 
         self.index.optimise()?;
 

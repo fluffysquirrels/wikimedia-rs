@@ -1,5 +1,6 @@
 use regex::{Regex, RegexBuilder};
 use std::str::FromStr;
+use valuable::{Valuable, Value, Visit};
 
 /// Represents a regex built from user input.
 ///
@@ -11,6 +12,16 @@ const MAX_LEN: usize = 100;
 const SIZE_LIMIT: usize = 10_000;
 const DFA_SIZE_LIMIT: usize = 10_000;
 const NEST_LIMIT: u32 = 10;
+
+impl Valuable for UserRegex {
+    fn as_value(&self) -> Value<'_> {
+        Value::String(self.0.as_str())
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        visit.visit_value(self.as_value());
+    }
+}
 
 impl FromStr for UserRegex {
     type Err = clap::Error;

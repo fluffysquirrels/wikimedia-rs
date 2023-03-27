@@ -22,7 +22,7 @@ pub struct TransferStats {
     pub rate: ByteRate,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct Duration(pub StdDuration);
 
 impl Debug for Bytes {

@@ -226,6 +226,7 @@ impl TryFrom<(CommonArgs, OpenSpecArgs)> for local::OpenSpec {
                                          but should only supply one of these"),
             (Some(file), None) => {
                 local::SourceSpec::File(local::FileSpec {
+                    compression: args.compression,
                     path: file,
                     seek: args.seek,
                 })

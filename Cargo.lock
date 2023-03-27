@@ -2206,6 +2206,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "progress-streams"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e965d96c8162c607b0cd8d66047ad3c9fd35273c134d994327882c6e47f986a7"
+
+[[package]]
 name = "quick-xml"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3529,6 +3535,7 @@ dependencies = [
  "natord",
  "once_cell",
  "platform-dirs",
+ "progress-streams",
  "quick-xml",
  "rand 0.8.5",
  "rayon",

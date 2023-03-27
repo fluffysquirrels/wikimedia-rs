@@ -17,9 +17,9 @@ use crate::{
     wikitext,
 };
 use iterator_ext::IteratorExt;
+use progress_streams::ProgressReader;
 use quick_xml::events::Event;
 use rayon::{
-    iter::Either,
     prelude::*,
 };
 use std::{
@@ -30,6 +30,10 @@ use std::{
     iter::Iterator,
     path::{Path, PathBuf},
     result::Result as StdResult,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     str::FromStr,
 };
 use tracing::Level;
@@ -41,8 +45,16 @@ struct FilePageIter<R: BufRead> {
 }
 
 pub struct JobFiles {
-    open_spec: OpenSpec,
     file_specs: Vec<FileSpec>,
+    files_total_len: Bytes,
+    open_spec: OpenSpec,
+}
+
+pub struct OpenJobFile {
+    pub file_spec: FileSpec,
+    pub pages_iter: Box<dyn Iterator<Item = Result<Page>> + Send>,
+    pub source_bytes_read: Arc<AtomicU64>,
+    pub uncompressed_bytes_read: Arc<AtomicU64>,
 }
 
 #[derive(Clone, Debug)]
@@ -76,6 +88,7 @@ pub struct DirSpec {
 
 #[derive(Clone, Debug)]
 pub struct FileSpec {
+    pub compression: Compression,
     pub path: PathBuf,
     pub seek: Option<u64>,
 }
@@ -168,8 +181,27 @@ pub fn open_spec(
         },
     };
 
+    let files_total_len: u64 =
+        file_specs.iter().map(|spec| spec.path.metadata()
+                                         .map_err(|e: std::io::Error| -> Error { e.into() })
+                                         .map(|meta| meta.len()))
+                         .try_fold(0_u64, |curr, len| -> Result<u64>
+                                          { Ok(curr + len?) })?;
+    let files_total_len = Bytes(files_total_len);
+
+    tracing::debug!(files_total_len = files_total_len.as_value(),
+                    file_count = file_specs.len(),
+                    "job dir files opened");
+
+    if tracing::enabled!(Level::TRACE) {
+        tracing::trace!(file_specs = ?file_specs.iter().map(|s| s.path.to_string_lossy())
+                                                .collect::<Vec<Cow<'_, str>>>(),
+                        "job dir files");
+    }
+
     Ok(JobFiles {
         file_specs: file_specs,
+        files_total_len,
         open_spec: spec,
     })
 }
@@ -185,15 +217,20 @@ impl JobFiles {
         &self.open_spec
     }
 
+    pub fn files_total_len(&self) -> Bytes {
+        self.files_total_len
+    }
+
     pub fn open_pages_iter(&self) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>> {
         let file_specs = self.file_specs.clone();
-        let compression = self.open_spec.compression;
 
         let pages = file_specs.into_iter()
-            .map(move |spec: FileSpec| { // -> Result<impl Iterator<Item = Result<Page>>>
-                spec.open_pages_iter(compression)
+            .map(move |spec: FileSpec| { // -> Result<OpenJobFile>
+                spec.open()
             })
-            .try_flatten_results() // : impl Iterator<Item = Result<Page>>
+            .try_flat_map_results(|file: OpenJobFile| {
+                Ok(file.pages_iter)
+            })
             .boxed_send();
 
         let pages = match self.open_spec.max_count {
@@ -204,44 +241,22 @@ impl JobFiles {
         Ok(pages)
     }
 
-    pub fn open_pages_par_iter(&self) -> Result<impl ParallelIterator<Item = Result<Page>>> {
-        let pages = self.open_files_par_iter()?
-                        .flatten_iter();
-
-        let pages = match self.open_spec.max_count {
-            None => Either::Left(pages),
-            Some(count) => Either::Right(pages.take_any(usize::try_from(count)?)),
-        };
-
-        Ok(pages)
-    }
-
     pub fn open_files_par_iter(&self)
-    -> Result<impl ParallelIterator<Item = impl Iterator<Item = Result<Page>>>>
+    -> Result<impl ParallelIterator<Item = Result<OpenJobFile>>>
     {
         let file_specs: Vec<FileSpec> = self.file_specs.clone();
-        let compression = self.open_spec.compression;
 
-        let pages = file_specs.into_par_iter()
+        let open_files = file_specs.into_par_iter()
             .with_max_len(1) // Each thread processes one file at a time
-            .map_init(|| (),
-                      move |_s, spec: FileSpec| {
-                          match spec.open_pages_iter(compression) {
-                              Ok(pages) => Either::Left(pages),
-                              Err(e) => Either::Right(std::iter::once(Err(e))),
-                          }
-                      });
-        Ok(pages)
+            .map(|spec: FileSpec| spec.open());
+        Ok(open_files)
     }
 }
 
 impl FileSpec {
-    pub fn open_pages_iter(
-        &self, compression: Compression
-    ) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>>
-    {
+    pub fn open(&self) -> Result<OpenJobFile> {
         tracing::debug!(path = %self.path.display(),
-                        ?compression,
+                        ?self.compression,
                         ?self.seek,
                         "dump::local::FileSpec::open_pages_iter()");
 
@@ -250,9 +265,21 @@ impl FileSpec {
             let _ = file_read.seek(std::io::SeekFrom::Start(offset))?;
         }
 
-        let file_bufread = BufReader::with_capacity(64 * 1024, file_read);
+        let source_bytes_read = Arc::new(AtomicU64::new(0));
 
-        fn into_page_iter<T>(inner: T) -> Result<Box<dyn Iterator<Item = Result<Page>> + Send>>
+        let source_bytes_read2 = source_bytes_read.clone();
+        let prog_read = ProgressReader::new(
+            file_read,
+            move |read_len| {
+                source_bytes_read2.fetch_add(
+                    read_len.try_into().expect("usize as u64"),
+                    Ordering::SeqCst);
+            });
+
+        let file_bufread = BufReader::with_capacity(64 * 1024, prog_read);
+
+        fn into_page_iter<T>(inner: T
+        ) -> Box<dyn Iterator<Item = Result<Page>> + Send>
             where T: BufRead + Send + 'static
         {
             let xml_buf = Vec::<u8>::with_capacity(100_000);
@@ -261,26 +288,57 @@ impl FileSpec {
                 xml_read,
                 buf: xml_buf,
             }.boxed_send();
-            Ok(page_iter)
+            page_iter
         }
 
-        match compression {
-            Compression::None => into_page_iter(file_bufread),
+        let (uncompressed_bytes_read, pages_iter) = match self.compression {
+            Compression::None => {
+                (source_bytes_read.clone(), into_page_iter(file_bufread))
+            },
             Compression::Bzip2 => {
                 let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
-                let bzip_bufread = BufReader::with_capacity(64 * 1024, bzip_decoder);
-                into_page_iter(bzip_bufread)
+
+                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
+                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
+                let uncompressed_prog_read = ProgressReader::new(
+                    bzip_decoder,
+                    move |read_len| {
+                        uncompressed_bytes_read2.fetch_add(
+                            read_len.try_into().expect("usize as u64"),
+                            Ordering::SeqCst);
+                    });
+
+                let bzip_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
+                (uncompressed_bytes_read, into_page_iter(bzip_bufread))
             },
             Compression::LZ4 => {
                 let lz4_decoder = lz4_flex::frame::FrameDecoder::new(file_bufread);
-                let lz4_bufread = BufReader::with_capacity(64 * 1024, lz4_decoder);
-                into_page_iter(lz4_bufread)
+
+                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
+                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
+                let uncompressed_prog_read = ProgressReader::new(
+                    lz4_decoder,
+                    move |read_len| {
+                        uncompressed_bytes_read2.fetch_add(
+                            read_len.try_into().expect("usize as u64"),
+                            Ordering::SeqCst);
+                    });
+
+                let lz4_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
+                (uncompressed_bytes_read, into_page_iter(lz4_bufread))
             }
-        }
+        };
+
+        Ok(OpenJobFile {
+            file_spec: self.clone(),
+            pages_iter,
+            source_bytes_read,
+            uncompressed_bytes_read,
+        })
     }
 }
 
-pub fn file_specs_from_job_dir(
+fn file_specs_from_job_dir(
     job_path: &Path,
     compression: Compression,
     user_file_name_regex: Option<&UserRegex>,
@@ -308,6 +366,7 @@ pub fn file_specs_from_job_dir(
                     && user_file_name_regex.as_ref().map_or(true, |re| re.0.is_match(&*name))
                 {
                     Ok(Some(FileSpec {
+                        compression,
                         path: dir_entry.path(),
                         seek: None,
                     }))
@@ -318,21 +377,6 @@ pub fn file_specs_from_job_dir(
 
     file_specs.sort_by(|a, b| natord::compare(&*a.path.to_string_lossy(),
                                               &*b.path.to_string_lossy()));
-
-    let files_total_len: u64 =
-        file_specs.iter().map(|spec| spec.path.metadata()
-                                         .map_err(|e: std::io::Error| -> Error { e.into() })
-                                         .map(|meta| meta.len()))
-                         .try_fold(0_u64, |curr, len| -> Result<u64>
-                                          { Ok(curr + len?) })?;
-
-    if tracing::enabled!(Level::DEBUG) {
-        tracing::debug!(files_total_len = Bytes(files_total_len).as_value(),
-                        file_count = file_specs.len(),
-                        file_specs = ?file_specs.iter().map(|s| s.path.to_string_lossy())
-                                                .collect::<Vec<Cow<'_, str>>>(),
-                        "job dir file paths");
-    }
 
     Ok(file_specs)
 }

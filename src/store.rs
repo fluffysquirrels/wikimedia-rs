@@ -9,7 +9,11 @@ pub use chunk::{
 };
 
 use crate::{
-    dump::{self, CategorySlug, local::JobFiles},
+    dump::{
+        self,
+        CategorySlug,
+        local::{FileSpec, JobFiles, OpenJobFile},
+    },
     Error,
     Result,
     util::fmt::{ByteRate, Bytes, Duration},
@@ -93,13 +97,17 @@ impl Store {
     pub fn import(&mut self, job_files: JobFiles) -> Result<ImportResult> {
         let start = Instant::now();
 
-        let files = job_files.open_files_par_iter()?;
         let chunk_write_guard = self.chunk_store.try_write_lock()?;
+
+        let files = job_files.open_files_par_iter()?;
         let index = &self.index;
 
         let chunk_bytes_total = AtomicU64::new(0);
-        let pages_total = AtomicU64::new(0);
         let chunks_len = AtomicU64::new(0);
+        let pages_total = AtomicU64::new(0);
+        let total_source_bytes_read = AtomicU64::new(0);
+
+        let total_source_bytes = job_files.files_total_len();
 
         enum ImportEnd {
             PageCountMax,
@@ -107,8 +115,18 @@ impl Store {
         }
 
         let end = files.try_for_each(
-            |file_pages /* : impl Iterator<Item = Result<Page>> */| -> StdResult<(), ImportEnd> {
-                let mut pages = file_pages.peekable();
+            |file: Result<OpenJobFile>| -> StdResult<(), ImportEnd> {
+                let OpenJobFile {
+                    file_spec,
+                    pages_iter,
+                    source_bytes_read,
+                    uncompressed_bytes_read,
+                } = match file {
+                    Err(e) => return Err(ImportEnd::Err(e)),
+                    Ok(file) => file,
+                };
+
+                let mut pages = pages_iter.peekable();
 
                 while pages.peek().is_some() {
                     if let Some(max) = job_files.open_spec().max_count.as_ref().copied() {
@@ -116,6 +134,8 @@ impl Store {
                             return Err(ImportEnd::PageCountMax);
                         }
                     }
+
+                    let source_bytes_read_before = source_bytes_read.load(Ordering::SeqCst);
 
                     let chunk_builder = match chunk_write_guard.chunk_builder() {
                         Ok(b) => b,
@@ -127,24 +147,58 @@ impl Store {
                         Err(e) => return Err(ImportEnd::Err(e)),
                     };
 
-                    let res = match Self::import_chunk(&mut pages, chunk_builder,
+                    let res = match Self::import_chunk(&file_spec, &mut pages, chunk_builder,
                                                        index_batch_builder) {
                         Ok(res) => res,
-                        Err(e) => return Err(ImportEnd::Err(e)),
+                        Err(e) => {
+                            let e = e.context(
+                                format!("While importing a chunk from file {file_spec:?} \
+                                         source_bytes_read={source_bytes_read:?} \
+                                         uncompressed_bytes_read={uncompressed_bytes_read:?}",
+                                        source_bytes_read =
+                                            Bytes(source_bytes_read.load(Ordering::SeqCst)),
+                                        uncompressed_bytes_read =
+                                            Bytes(uncompressed_bytes_read.load(
+                                                Ordering::SeqCst))));
+                            return Err(ImportEnd::Err(e));
+                        },
                     };
 
-                    chunk_bytes_total.fetch_add(res.chunk_meta.bytes_len.0, Ordering::SeqCst);
-                    pages_total.fetch_add(res.chunk_meta.pages_len, Ordering::SeqCst);
-                    chunks_len.fetch_add(1, Ordering::SeqCst);
+                    let chunk_bytes_total_curr =
+                        chunk_bytes_total.fetch_add(res.chunk_meta.bytes_len.0, Ordering::SeqCst);
+                    let pages_total_curr =
+                        pages_total.fetch_add(res.chunk_meta.pages_len, Ordering::SeqCst);
+                    let chunks_len_curr =
+                        chunks_len.fetch_add(1, Ordering::SeqCst);
+                    let source_bytes_read_after = source_bytes_read.load(Ordering::SeqCst);
+                    let source_bytes_read_diff =
+                        source_bytes_read_after - source_bytes_read_before;
+                    let total_source_bytes_read_curr =
+                        total_source_bytes_read.fetch_add(source_bytes_read_diff,
+                                                          Ordering::SeqCst);
+
+                    let percent_complete =
+                        ((total_source_bytes_read_curr as f64) /
+                         (total_source_bytes.0 as f64)) * 100.0;
+
+                    // TODO: let est_remaining_duration =
 
                     tracing::debug!(
-                        chunk_bytes_total = Bytes(chunk_bytes_total.load(Ordering::SeqCst))
-                                               .as_value(),
-                        pages_total = pages_total.load(Ordering::SeqCst),
-                        chunks_len = chunks_len.load(Ordering::SeqCst),
+                        chunk_bytes_total = Bytes(chunk_bytes_total_curr).as_value(),
+                        pages_total = pages_total_curr,
+                        chunks_len = Bytes(chunks_len_curr).as_value(),
+                        total_source_bytes_read = Bytes(total_source_bytes_read_curr).as_value(),
+                        total_source_bytes = total_source_bytes.as_value(),
+                        percent_complete = format!("{percent_complete:.1}%"),
                         duration_so_far = Duration(start.elapsed()).as_value(),
+                        input_file = %file_spec.path.display(),
+                        source_bytes_read = Bytes(source_bytes_read_diff).as_value(),
+                        // WIP: uncompressed_bytes_read = Bytes(uncompressed_bytes_read_diff.get()),
                         "Chunk import done");
                 };
+
+                tracing::debug!(input_file = %file_spec.path.display(),
+                                "Finished importing from file");
 
                 Ok(())
             });
@@ -174,6 +228,7 @@ impl Store {
     }
 
     fn import_chunk<'lock, 'index>(
+        _file_spec: &FileSpec,
         pages: &mut dyn Iterator<Item = Result<dump::Page>>,
         mut chunk_builder: chunk::Builder<'lock>,
         mut index_batch_builder: index::ImportBatchBuilder<'index>,

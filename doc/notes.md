@@ -1,5 +1,11 @@
 # Notes
 
+* File locking
+    * Needed to avoid simulataneous imports trying to write to the same chunk file.
+    * Cross platform: https://docs.rs/fslock/latest/fslock/
+    * Unix only: https://docs.rs/file-lock/latest/file_lock/
+    * libc, async, lock wraps file: https://crates.io/crates/async-file-lock
+    * https://crates.io/crates/fd-lock ; lock returns guard values.
 * Cache metadata downloads
     * Save to `./out/cache`
     * Existing libraries

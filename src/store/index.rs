@@ -335,8 +335,6 @@ impl Index {
             .build_rusqlite(SqliteQueryBuilder);
         let params2 = &*params.as_params();
 
-        tracing::debug!(sql, "get_category_pages query");
-
         let conn = self.conn()?;
         let mut statement = conn.prepare_cached(&*sql)?;
         let mut rows = statement.query(params2)?;

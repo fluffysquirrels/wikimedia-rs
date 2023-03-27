@@ -2,9 +2,14 @@
 
 ## WIP
 
+* Progress bytes on import.
 
 ## Must do before publishing
 
+* Bug: import broken  
+  ` UNIQUE constraint failed: page_categories.category_slug, page_categories.mediawiki_id`
+    * Add context
+    * Log a warning on duplicates and continue?
 * Rename package (wmd is taken on crates.io)
     * wmdl?
 * Support `cargo install` wmdl / wikimedia-downloader?
@@ -18,13 +23,6 @@
         * Commit generated capnp rust files?
         * Put generated capnp rust files in crates.io archive?
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
-* store::chunk
-    * Lock chunk store for writing during import.
-        * Need to avoid simulataneous imports trying to write to the same chunk file.
-        * Cross platform: https://docs.rs/fslock/latest/fslock/
-        * Unix only: https://docs.rs/file-lock/latest/file_lock/
-        * libc, async, lock wraps file: https://crates.io/crates/async-file-lock
-        * https://crates.io/crates/fd-lock ; lock returns guard values.
 * wikitext to HTML
     * remove active content (e.g. JavaScript)
         * https://docs.rs/ammonia/3.3.0/ammonia/
@@ -58,7 +56,6 @@
     ```
     bin/generate-completions && exec zsh
     ```
-* Add `builder()` method to objects that are built with builders.
 
 * web
     * 404 page for no route match
@@ -82,17 +79,11 @@
         * web: add examples to wmd web index /
         * web: page's category links go to the category page
         * web: page/by-name/Category:foo redirects to category/by-name/foo
-        * web: list of categories.
-            * Show category slug, query by it.
-            * Paging UI
         * web: list of pages in category.
-            * Paging UI.
             * 404 if no pages found.
-            * Add lower bound filter and order by.
     * cli: list of categories.
     * cli: list of pages in category.
 * Title search with FTS
-* Add context to import errors, especially unique constraint violations.
 * Non-unique titles!
 * Case insensitive titles
     * Redirect in web when title is not canonical.
@@ -164,10 +155,11 @@
     * Separate stores per (dump,version)?
 * Improve import
     * Restartable / checkpointed / idempotent
+        * Skip duplicate pages.
+        * Record completed job files, skip them on the next run.
     * Progress reporting, ETA. https://docs.rs/progress-streams/latest/progress_streams/
     * One shot download and import, option to keep raw dumps or only
-      have one on disk during import.
-    * Import while web app is running
+      have one .xml.bz2 on disk during import.
     * In parallel
     * daemon or cronjob
     * `<page> hash check`

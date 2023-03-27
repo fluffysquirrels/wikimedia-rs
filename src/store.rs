@@ -219,7 +219,8 @@ impl Store {
                                         Ok(chrono_dur) => chrono_dur,
                                         Err(_e) => return None,
                                     };
-                            let s = chrono_time.to_rfc3339()
+                            let s = chrono_time.to_rfc3339_opts(chrono::SecondsFormat::Secs,
+                                                                true /* use_z */)
                                                .replace('T', " ");
                             Some(s)
                         });
@@ -230,7 +231,9 @@ impl Store {
                            "{now}     Import: {percent_complete_str}%\
                             {remaining_str}\
                             {eta}",
-                           now = now.to_rfc3339().replace('T', " "),
+                           now = now.to_rfc3339_opts(chrono::SecondsFormat::Secs,
+                                                     true /* use_z */)
+                                    .replace('T', " "),
                            remaining_str = match est_remaining_duration {
                                Some(dur) => format!("   remaining: {:.2?}", dur.0),
                                None => "".to_string(),

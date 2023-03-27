@@ -15,7 +15,6 @@ mod args;
 mod capnp;
 mod commands;
 mod dump;
-mod fbs;
 mod http;
 mod slug;
 mod store;

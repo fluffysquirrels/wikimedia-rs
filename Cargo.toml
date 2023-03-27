@@ -33,7 +33,6 @@ clap_complete = "4.1.4"
 crossbeam-utils = "0.8.15"
 encoding_rs = "0.8"
 fd-lock = "3.0.10"
-flatbuffers = "23.1.21"
 futures = "0.3.27"
 hex = "0.4.3"
 html-escape = "0.2.13"
@@ -61,7 +60,6 @@ sea-query-rusqlite = { version = "0.2.0", features = ["with-chrono"] }
 serde = { version = "1.0.100", features = ["derive"] }
 serde_json = "1.0.93"
 sha1 = { version = "0.10.5", features = ["asm"] }
-sled = { version = "0.34.7", default-features = false }
 tokio = { version = "1.26.0", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "time", "tracing"] }
 tokio-stream = "0.1.12"
 tokio-util = { version = "0.7.7", features = ["io"] }
@@ -77,5 +75,4 @@ valuable-serde = "0.1.0"
 # strip = true
 
 [patch.crates-io]
-flatbuffers = { git = "https://github.com/fluffysquirrels/flatbuffers", branch = "rust_vector_loc_method" }
 tracing-bunyan-formatter = { git = "https://github.com/fluffysquirrels/tracing-bunyan-formatter", branch = "valuable" }

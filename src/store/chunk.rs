@@ -1,13 +1,6 @@
 //! MediaWiki pages are stored in chunk files, implemented in this module.
 //!
-//! Currently the chunk files contain about 10 MB of pages serialised as a flatbuffers object.
-//!
-//! Work is in progress to switch to capnproto instead, because flatbuffers is only safe to use if
-//! the object tree is verified before use, and this takes quite a long time (50-100ms per chunk
-//! file).
-
-#[cfg(any())]
-mod flatbuffers;
+//! Currently the chunk files contain about 10 MB of pages serialised as a capnproto struct.
 
 use anyhow::{bail, Context, format_err};
 use crate::{
@@ -171,34 +164,6 @@ impl Display for StorePageId {
     ) -> StdResult<(), fmt::Error> {
         let StorePageId { chunk_id, page_chunk_index } = self;
         write!(f, "{chunk_id}.{page_chunk_index}")
-    }
-}
-
-impl TryFrom<&[u8]> for StorePageId {
-    type Error = anyhow::Error;
-
-    fn try_from(b: &[u8]) -> Result<StorePageId> {
-        if b.len() != 16 {
-            bail!("StorePageId::try_from: input.len() != 16");
-        }
-
-        Ok(StorePageId{
-            chunk_id: ChunkId(
-                u64::from_be_bytes(b[0..8].try_into()
-                                          .expect("already checked b.len()"))),
-            page_chunk_index: PageChunkIndex(
-                u64::from_be_bytes(b[8..16].try_into()
-                                           .expect("already checked b.len()"))),
-        })
-    }
-}
-
-impl StorePageId {
-    pub fn to_bytes(&self) -> [u8; 16] {
-        let mut out = [0u8; 16];
-        out[0..8].copy_from_slice(self.chunk_id.0.to_be_bytes().as_ref());
-        out[8..16].copy_from_slice(self.page_chunk_index.0.to_be_bytes().as_ref());
-        out
     }
 }
 

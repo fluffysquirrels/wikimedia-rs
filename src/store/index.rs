@@ -2,9 +2,6 @@
 //! there are indexes implemented in this module that contain the serialised
 //! page's location in a chunk file.
 
-#[allow(dead_code)] // Not used at the moment, soon to be deleted.
-mod sled;
-
 use anyhow::{Context, format_err};
 use crate::{
     dump::{self, CategorySlug},

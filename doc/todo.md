@@ -2,21 +2,24 @@
 
 ## WIP
 
-* Progress bytes on import.
-
-## Must do before publishing
-
+* Progress on import.
+    * Output on a timer, not on chunk end.
+    * Remaining string progress: hours, minutes, seconds.
+* Progress on download.
 * Bug: import broken  
   ` UNIQUE constraint failed: page_categories.category_slug, page_categories.mediawiki_id`
     * Add context
     * Log a warning on duplicates and continue?
-* Rename package (wmd is taken on crates.io)
-    * wmdl?
+
+## Must do before publishing
+
+* Rename bin name to wmdl (wmd is taken on crates.io)
 * Support `cargo install` wmdl / wikimedia-downloader?
-    * Can't go on crates.io with git dependencies.
+    * Can't go on crates.io with git dependencies.  
+      (waiting for tracing-bunyan-formatter to be merged).
     * Out dir
         * Possible: On first use prompt for default out path and save it to a config file
-        * Or fall back to user data dir
+        * This is done: Or fall back to user data dir
     * Mirror selection?
     * Build without capnp.
         * Use build.rs?
@@ -26,7 +29,7 @@
 * wikitext to HTML
     * remove active content (e.g. JavaScript)
         * https://docs.rs/ammonia/3.3.0/ammonia/
-    * Internal links to headings are broken. They're rewritten like  
+    * Did I fix this already? Internal links to headings are broken. They're rewritten like  
       `http://localhost:8089/enwiki/page/by-title/#Upright`
     * Test: Batch render all pages.
         * pandoc error during rendering for this page (from dump enwiki/20230301/articlesdump):

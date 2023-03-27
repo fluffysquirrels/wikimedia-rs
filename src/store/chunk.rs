@@ -9,7 +9,7 @@
 #[cfg(any())]
 mod flatbuffers;
 
-use anyhow::{bail, format_err};
+use anyhow::{bail, Context, format_err};
 use crate::{
     capnp::wikimedia_capnp as wmc,
     dump,
@@ -35,22 +35,43 @@ use std::{
     fmt::{self, Debug, Display},
     fs,
     io::{BufWriter, Seek, Write},
-    path::PathBuf,
+    marker::PhantomData,
+    path::{Path, PathBuf},
     result::Result as StdResult,
     str::FromStr,
     sync::atomic::{AtomicU64, Ordering},
 };
 use valuable::Valuable;
 
-pub struct Store {
-    next_chunk_id: CachePadded<AtomicU64>,
+pub(in crate::store) struct Store {
+    lock: fd_lock::RwLock<fs::File>,
     opts: Options,
     temp_dir: TempDir,
 }
 
-pub struct Options {
+pub(in crate::store) struct Options {
     pub path: PathBuf,
     pub max_chunk_len: u64,
+}
+
+pub(in crate::store) struct WriteLockGuard<'lock> {
+    _inner: fd_lock::RwLockWriteGuard<'lock, fs::File>,
+    max_chunk_len: u64,
+    next_chunk_id: CachePadded<AtomicU64>,
+    out_dir: PathBuf,
+    temp_dir: PathBuf,
+}
+
+pub(in crate::store) struct Builder<'lock> {
+    capb: TypedBuilder<wmc::chunk::Owned, HeapAllocator>,
+    chunk_id: ChunkId,
+    curr_bytes_len_estimate: u64,
+    max_chunk_len: u64,
+    out_path: PathBuf,
+    pages: Vec<dump::Page>,
+    temp_path: PathBuf,
+
+    phantom_lock: PhantomData<&'lock WriteLockGuard<'lock>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -86,16 +107,9 @@ pub struct ChunkMeta {
     pub path: PathBuf,
 }
 
-pub struct Builder<'store> {
-    capb: TypedBuilder<wmc::chunk::Owned, HeapAllocator>,
-    chunk_id: ChunkId,
-    curr_len_estimate: u64,
-    out_path: PathBuf,
-    pages: Vec<dump::Page>,
-    temp_path: PathBuf,
-    // page_caps: Vec::<WIPOffset<wm::Page<'fbb>>>,
-
-    _store: &'store Store,
+struct ChunksStats {
+    count: usize,
+    max_id: Option<ChunkId>,
 }
 
 pub const MAX_LEN_DEFAULT: u64 = 10_000_000; // 10 MB.
@@ -190,87 +204,75 @@ impl StorePageId {
 
 impl Options {
     pub fn build(self) -> Result<Store> {
-        let chunk_iter_span = tracing::trace_span!("ChunkStore enumerating existing chunks.",
-                                                   chunk_count = tracing::field::Empty,
-                                                   max_existing_chunk_id = tracing::field::Empty)
-                                      .entered();
+        Store::new(self)
+    }
+}
 
-        struct ChunkStats {
-            count: usize,
-            max_id: Option<ChunkId>,
+impl Store {
+    fn new(opts: Options) -> Result<Store> {
+        Ok(Store {
+            lock: Self::init_lock(&opts)?,
+            temp_dir: TempDir::create(&*opts.path, /* keep: */ false)?,
+
+            // This moves opts into Store, so do that last.
+            opts,
+        })
+    }
+
+    pub fn clear(&mut self) -> Result<()> {
+        let opts = &self.opts;
+        let _guard = self.lock.try_write()?;
+
+        let chunks_path = &*self.opts.path;
+        if chunks_path.try_exists()? {
+            for chunk_id in Self::chunk_id_iter_from_opts(opts) {
+                let chunk_path = chunk_path(&*opts.path, chunk_id?);
+                fs::remove_file(chunk_path)?;
+            }
         }
 
-        let chunk_stats: ChunkStats =
-            Store::chunk_id_iter_from_opts(&self)
-                .try_fold(ChunkStats { count: 0, max_id: None }, // inital state
-                          |s: ChunkStats, next: Result<ChunkId>|
-                          -> Result<ChunkStats> {
-                              let next = next?;
-                              Ok(ChunkStats {
-                                  count: s.count + 1,
-                                  max_id: match s.max_id {
-                                      None => Some(next),
-                                      Some(prev) => Some(cmp::max(prev, next)),
-                                  }
-                              })
-                          })?;
-        chunk_iter_span.record("chunk_count", chunk_stats.count);
-        chunk_iter_span.record("max_existing_chunk_id",
-                               tracing::field::debug(chunk_stats.max_id));
-        let _ = chunk_iter_span.exit();
+        Ok(())
+    }
 
-        let next_chunk_id = match chunk_stats.max_id {
+    pub fn try_write_lock<'store, 'lock>(&'store mut self) -> Result<WriteLockGuard<'lock>>
+        where 'store: 'lock
+    {
+        let inner_guard = self.lock.try_write()?;
+
+        let chunks_stats = Self::get_chunk_stats(&self.opts)?;
+
+        let next_chunk_id = match chunks_stats.max_id {
             Some(ChunkId(id)) => ChunkId(id + 1),
             None => ChunkId(0),
         };
 
         tracing::debug!(%next_chunk_id,
-                        "store::chunk::ChunkStore::new() loaded");
+                        "store::chunk::Store::try_write_lock() succeeded");
 
-        Ok(Store {
+        Ok(WriteLockGuard {
+            _inner: inner_guard,
+            max_chunk_len: self.opts.max_chunk_len,
             next_chunk_id: CachePadded::new(AtomicU64::new(next_chunk_id.0)),
-            temp_dir: TempDir::create(&*self.path, /* keep: */ false)?,
-
-            // This moves self into Store, so do that last.
-            opts: self,
+            out_dir: self.opts.path.to_owned(),
+            temp_dir: self.temp_dir.path()?.to_owned(),
         })
     }
-}
 
-impl Store {
-    pub fn clear(&mut self) -> Result<()> {
-        let chunks_path = &*self.opts.path;
-        if chunks_path.try_exists()? {
-            fs::remove_dir_all(&*chunks_path)?;
-        }
+    fn init_lock(opts: &Options) -> Result<fd_lock::RwLock<fs::File>> {
+        let lock_path = opts.path.join("lock");
 
-        *self.next_chunk_id.get_mut() = 0;
-        Ok(())
-    }
-
-    pub fn chunk_builder<'store>(&'store self) -> Result<Builder<'store>> {
-        let chunk_id = self.next_chunk_id();
-
-        let out_path = self.chunk_path(chunk_id);
-        let temp_path = self.temp_dir.path()?.join(
-            out_path.file_name().expect("Chunk file name"));
-
-        fs::create_dir_all(out_path.parent().expect("parent of out_path"))?;
-        fs::create_dir_all(temp_path.parent().expect("parent of temp_path"))?;
-
-        Ok(Builder {
-            capb: TypedBuilder::<wmc::chunk::Owned, HeapAllocator>::new_default(),
-            chunk_id,
-            curr_len_estimate: 0,
-            pages: Vec::new(),
-            out_path,
-            temp_path,
-            // page_fbs: Vec::<WIPOffset<wm::Page>>::with_capacity(
-            //     usize::try_from(self.opts.max_chunk_len / 1_000)
-            //         .expect("usize from u64")),
-
-            _store: self,
-        })
+        // Closure to add context to errors.
+        (|| {
+            fs::create_dir_all(&*opts.path)?;
+            let file = fs::OpenOptions::new()
+                           .read(true)
+                           .write(true)
+                           .create(true)
+                           .open(&*lock_path)?;
+            let lock = fd_lock::RwLock::new(file);
+            anyhow::Ok(lock)
+        })().with_context(|| format!("While creating chunk store lock file '{path}'",
+                                     path = lock_path.display()))
     }
 
     pub fn get_page_by_store_id(&self, id: StorePageId) -> Result<Option<MappedPage>> {
@@ -325,13 +327,41 @@ impl Store {
         })()
     }
 
+    fn get_chunk_stats(opts: &Options) -> Result<ChunksStats> {
+        let chunk_iter_span = tracing::trace_span!("ChunkStore enumerating existing chunks.",
+                                                   chunk_count = tracing::field::Empty,
+                                                   max_existing_chunk_id = tracing::field::Empty)
+                                      .entered();
+
+        let chunk_stats: ChunksStats =
+            Store::chunk_id_iter_from_opts(&opts)
+                .try_fold(ChunksStats { count: 0, max_id: None }, // inital state
+                          |s: ChunksStats, next: Result<ChunkId>|
+                          -> Result<ChunksStats> {
+                              let next = next?;
+                              Ok(ChunksStats {
+                                  count: s.count + 1,
+                                  max_id: match s.max_id {
+                                      None => Some(next),
+                                      Some(prev) => Some(cmp::max(prev, next)),
+                                  }
+                              })
+                          })?;
+        chunk_iter_span.record("chunk_count", chunk_stats.count);
+        chunk_iter_span.record("max_existing_chunk_id",
+                               tracing::field::debug(chunk_stats.max_id));
+        let _ = chunk_iter_span.exit();
+
+        Ok(chunk_stats)
+    }
+
     pub fn get_chunk_meta_by_chunk_id(&self, chunk_id: ChunkId) -> Result<Option<ChunkMeta>> {
         let chunk = try2!(self.map_chunk(chunk_id));
         Ok(Some(chunk.meta()?))
     }
 
     pub fn map_chunk(&self, id: ChunkId) -> Result<Option<MappedChunk>> {
-        let path = self.chunk_path(id);
+        let path = chunk_path(&*self.opts.path, id);
 
         let file = match fs::File::open(&*path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -357,28 +387,54 @@ impl Store {
 
         Ok(Some(chunk))
     }
+}
 
-    fn chunk_path(&self, chunk_id: ChunkId) -> PathBuf {
-        self.opts.path.join(format!("articles-{id:016x}.cap", id = chunk_id.0))
-    }
+fn chunk_path(dir: &Path, chunk_id: ChunkId) -> PathBuf {
+    dir.join(format!("articles-{id:016x}.cap", id = chunk_id.0))
+}
 
+impl<'lock> WriteLockGuard<'lock> {
     fn next_chunk_id(&self) -> ChunkId {
         let next = self.next_chunk_id.fetch_add(1, Ordering::SeqCst);
         ChunkId(next)
     }
+
+    pub(in crate::store) fn chunk_builder(&'lock self) -> Result<Builder<'lock>> {
+        let chunk_id = self.next_chunk_id();
+
+        let out_path = chunk_path(&*self.out_dir, chunk_id);
+        let temp_path = self.temp_dir.join(
+            out_path.file_name().expect("Chunk file name"));
+
+        fs::create_dir_all(out_path.parent().expect("parent of out_path"))?;
+        fs::create_dir_all(temp_path.parent().expect("parent of temp_path"))?;
+
+        Ok(Builder {
+            capb: TypedBuilder::<wmc::chunk::Owned, HeapAllocator>::new_default(),
+            chunk_id,
+            curr_bytes_len_estimate: 0,
+            max_chunk_len: self.max_chunk_len,
+            out_path,
+            pages: Vec::new(),
+            temp_path,
+
+            phantom_lock: PhantomData,
+        })
+    }
 }
 
-impl<'store> Builder<'store> {
+impl<'lock> Builder<'lock> {
     pub fn push(&mut self, page: &dump::Page) -> Result<StorePageId> {
         let page = page.clone();
-        self.curr_len_estimate +=
+        self.curr_bytes_len_estimate +=
             u64::try_from(page.title.len() +
             match page.revision {
                 Some(dump::Revision { text: Some(ref text), .. }) => text.len(),
                 _ => 0,
             }).expect("usize as u64");
-        self.pages.push(page.clone());
+        self.pages.push(page);
         let idx = self.pages.len() - 1;
+
         Ok(StorePageId {
             chunk_id: self.chunk_id,
             page_chunk_index: PageChunkIndex(idx.try_into().expect("usize as u64")),
@@ -427,8 +483,13 @@ impl<'store> Builder<'store> {
         })
     }
 
-    pub fn curr_bytes_len(&self) -> u64 {
-        self.curr_len_estimate
+    #[allow(dead_code)] // Not used at the moment.
+    pub fn curr_bytes_len_estimate(&self) -> u64 {
+        self.curr_bytes_len_estimate
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.curr_bytes_len_estimate > self.max_chunk_len
     }
 }
 

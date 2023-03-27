@@ -5,7 +5,10 @@
 
 ## Must do before publishing
 
+* Rename package (wmd is taken on crates.io)
+    * wmdl?
 * Support `cargo install` wmdl / wikimedia-downloader?
+    * Can't go on crates.io with git dependencies.
     * Out dir
         * Possible: On first use prompt for default out path and save it to a config file
         * Or fall back to user data dir
@@ -21,7 +24,7 @@
         * Cross platform: https://docs.rs/fslock/latest/fslock/
         * Unix only: https://docs.rs/file-lock/latest/file_lock/
         * libc, async, lock wraps file: https://crates.io/crates/async-file-lock
-        * https://crates.io/crates/fd-lock
+        * https://crates.io/crates/fd-lock ; lock returns guard values.
 * wikitext to HTML
     * remove active content (e.g. JavaScript)
         * https://docs.rs/ammonia/3.3.0/ammonia/
@@ -55,7 +58,7 @@
     ```
     bin/generate-completions && exec zsh
     ```
-
+* Add `builder()` method to objects that are built with builders.
 
 * web
     * 404 page for no route match

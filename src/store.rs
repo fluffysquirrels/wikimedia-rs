@@ -16,7 +16,6 @@ use crate::{
 };
 use rayon::prelude::*;
 use std::{
-    convert::TryFrom,
     fmt::Debug,
     path::PathBuf,
     result::Result as StdResult,
@@ -95,6 +94,8 @@ impl Store {
         let start = Instant::now();
 
         let files = job_files.open_files_par_iter()?;
+        let chunk_write_guard = self.chunk_store.try_write_lock()?;
+        let index = &self.index;
 
         let chunk_bytes_total = AtomicU64::new(0);
         let pages_total = AtomicU64::new(0);
@@ -116,7 +117,18 @@ impl Store {
                         }
                     }
 
-                    let res = match self.import_chunk(&mut pages) {
+                    let chunk_builder = match chunk_write_guard.chunk_builder() {
+                        Ok(b) => b,
+                        Err(e) => return Err(ImportEnd::Err(e)),
+                    };
+
+                    let index_batch_builder = match index.import_batch_builder() {
+                        Ok(b) => b,
+                        Err(e) => return Err(ImportEnd::Err(e)),
+                    };
+
+                    let res = match Self::import_chunk(&mut pages, chunk_builder,
+                                                       index_batch_builder) {
                         Ok(res) => res,
                         Err(e) => return Err(ImportEnd::Err(e)),
                     };
@@ -161,13 +173,12 @@ impl Store {
         Ok(res)
     }
 
-    fn import_chunk(&self, pages: &mut dyn Iterator<Item = Result<dump::Page>>
+    fn import_chunk<'lock, 'index>(
+        pages: &mut dyn Iterator<Item = Result<dump::Page>>,
+        mut chunk_builder: chunk::Builder<'lock>,
+        mut index_batch_builder: index::ImportBatchBuilder<'index>,
     ) -> Result<ImportChunkResult> {
         let start = Instant::now();
-
-        let mut chunk_builder = self.chunk_store.chunk_builder()?;
-        let mut index_batch_builder = self.index.import_batch_builder()?;
-        let max_len = u64::try_from(self.opts.max_chunk_len).expect("u64 from usize");
 
         for page in pages {
             let page: dump::Page = page?;
@@ -175,7 +186,7 @@ impl Store {
             let store_page_id = chunk_builder.push(&page)?;
             index_batch_builder.push(&page, store_page_id)?;
 
-            if chunk_builder.curr_bytes_len() > max_len {
+            if chunk_builder.is_full() {
                 break;
             }
         }

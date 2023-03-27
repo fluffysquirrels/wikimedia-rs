@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/fluffysquirrels/wikimedia-downloader"
+description = "Download and view data from wikimedia sites."
 
 include = [
     ".cargo/config.toml",
@@ -31,6 +32,7 @@ clap = { version = "4.1.8", features = ["derive", "env", "string"] }
 clap_complete = "4.1.4"
 crossbeam-utils = "0.8.15"
 encoding_rs = "0.8"
+fd-lock = "3.0.10"
 flatbuffers = "23.1.21"
 futures = "0.3.27"
 hex = "0.4.3"

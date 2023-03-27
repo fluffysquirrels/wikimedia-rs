@@ -5,11 +5,14 @@
 * Progress on import.
     * Output on a timer, not on chunk end.
     * Remaining string progress: hours, minutes, seconds.
+    * Tidy up store::import(), it's too long.
 * Progress on download.
 * Bug: import broken  
   ` UNIQUE constraint failed: page_categories.category_slug, page_categories.mediawiki_id`
     * Add context
     * Log a warning on duplicates and continue?
+    * Currently just ignore.
+    * Remove duplicate casing in Rust?
 
 ## Must do before publishing
 
@@ -38,7 +41,7 @@
   "id": 62585868,
   "title": "Suga's Interlude",
   "revision": {
-    "id": 35936988,`
+    "id": 35936988,}}`
 * Documentation:
     * Pre-requisites for build and run.
         * capnp, capnp-rust on path

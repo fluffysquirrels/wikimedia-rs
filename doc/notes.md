@@ -158,24 +158,28 @@ du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
 * Recompress data files as LZ4 snippet:
 ```
 cd ~/wmd/out/job
-ls *articles*.xml*.bz2 \
+ls *.bz2 \
     | sort --version-sort \
-    | xargs -n1 -P 8 -I% bash -c \
+    | xargs -n1 -P 4 -I% bash -c \
     'set -o pipefail;
-IN="%";
-BASE="${IN/.bz2/}";
-echo "${BASE}";
-OUT="${BASE}.lz4";
-if ! test -f "${OUT}"; then
-echo "recompressing ${BASE}"
-bzcat "${IN}" | lz4 --verbose --compress -1 - "${OUT}";
-fi'
+
+     IN="%";
+     BASE="${IN/.bz2/}";
+     OUT="${BASE}.lz4";
+
+     echo "${BASE}";
+     if ! test -f "${OUT}"; then
+         echo "recompressing ${BASE}"
+         bzcat "${IN}" | lz4 --verbose --compress -1 - "${OUT}";
+     fi'
 ```
 
 * Disk usage for bz2 vs lz4:
 ```
-du -cm *articles*.bz2 | egrep total | sed -e 's/total/articles*.xml.bz2 total/'
-du -cm *articles*.lz4 | egrep total | sed -e 's/total/articles*.xml.lz4 total/'
+du -cm *.bz2 | egrep total | sed -e "s/total/*.bz2 total/"
+echo "bz2 file count: $(ls *.bz2 | wc -l)"
+du -cm *.lz4 | egrep total | sed -e "s/total/*.lz4 total/"
+echo "lz4 file count: $(ls *.lz4 | wc -l)"
 ```
     * 19723 MB articles*.xml.bz2 total
     * 37328 MB articles*.xml.lz4 total

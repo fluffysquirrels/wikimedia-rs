@@ -2,18 +2,22 @@
 
 use anyhow::{bail, Context, format_err};
 use crate::{
+    args::CommonArgs,
     dump::{self, DumpName, DumpVersionStatus, FileMetadata, JobName, JobStatus, Version,
            VersionSpec},
     http,
     Result,
     TempDir,
     UserRegex,
-    util::fmt::{Bytes, TransferStats},
+    util::{
+        self,
+        fmt::{Bytes, TransferStats},
+    },
 };
 use sha1::{Sha1, Digest};
 use std::{
     path::Path,
-    time::Instant,
+    time::{Duration as StdDuration, Instant},
 };
 use tokio_stream::StreamExt;
 use tracing::Level;
@@ -26,6 +30,17 @@ pub enum ExistingFileStatus {
     DeletedBecauseIncorrectSha1Hash,
     NoSha1HashToCheck,
     FileOk,
+}
+
+#[derive(Clone, Debug)]
+pub struct DownloadJobResult {
+    pub download_ok: u64,
+    pub download_stats: TransferStats,
+
+    pub existing_ok: u64,
+    pub existing_stats: TransferStats,
+
+    pub duration: util::fmt::Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -231,6 +246,95 @@ pub async fn get_file_infos(
     Ok((ver, files))
 }
 
+
+#[tracing::instrument(level = "trace", ret)]
+pub async fn download_job(
+    dump_name: &DumpName,
+    version_spec: &VersionSpec,
+    job_name: &JobName,
+    file_name_regex: Option<&UserRegex>,
+    keep_temp_dir: bool,
+    common_args: &CommonArgs,
+    mirror_url: &str,
+) -> Result<DownloadJobResult> {
+    let start_time = Instant::now();
+
+    let metadata_client = http::metadata_client(&common_args)?;
+
+    let (version, files) = get_file_infos(
+        &metadata_client,
+        dump_name,
+        version_spec,
+        job_name,
+        file_name_regex).await?;
+
+    let out_dir = common_args.out_dir();
+
+    let temp_dir = TempDir::create(&*out_dir, keep_temp_dir)?;
+    let download_client = http::download_client(&common_args)?;
+
+    let mut download_ok: u64 = 0;
+    let mut download_len: u64 = 0;
+    let mut existing_ok: u64 = 0;
+    let mut existing_len: u64 = 0;
+
+    for (_file_name, file_meta) in files.iter() {
+        let file_res =
+            dump::download::download_job_file(&download_client, dump_name, &version,
+                                              job_name, mirror_url, file_meta,
+                                              &*out_dir, &temp_dir).await
+                .with_context(|| format!(
+                    "while downloading job file \
+                     dump='{dump}' \
+                     version='{version}' \
+                     job='{job}' \
+                     file='{file_rel_url:?}'",
+                    dump = dump_name.0,
+                    version = version.0,
+                    job = job_name.0,
+                    file_rel_url = &file_meta.url))?;
+        match file_res.kind {
+            DownloadJobFileResultKind::DownloadOk => {
+                download_ok += 1;
+                download_len += file_res.stats.len.0;
+
+                // Delay between requests to avoid being rate limited.
+                std::thread::sleep(StdDuration::from_secs(3));
+            },
+            DownloadJobFileResultKind::ExistingOk => {
+                existing_ok += 1;
+                existing_len += file_res.stats.len.0;
+            },
+        };
+    }
+
+    drop(temp_dir);
+
+    let duration = start_time.elapsed();
+
+    let job_res = DownloadJobResult {
+        download_ok,
+        download_stats: TransferStats::new(Bytes(download_len), duration),
+
+        existing_ok,
+        existing_stats: TransferStats::new(Bytes(existing_len), duration),
+
+        duration: util::fmt::Duration(duration),
+    };
+
+    tracing::info!(download_ok,
+                   download_stats = job_res.download_stats.as_value(),
+
+                   existing_ok,
+                   existing_stats = job_res.existing_stats.as_value(),
+
+                   duration = job_res.duration.as_value(),
+
+                   "download_job complete");
+
+    Ok(job_res)
+}
+
 #[tracing::instrument(level = "trace", ret, skip(client))]
 pub async fn download_job_file(
     client: &http::Client,
@@ -280,7 +384,8 @@ pub async fn download_job_file(
 
     let download_request = client.get(url.clone())
                                  .build()?;
-    let download_result = http::download_file(&client, download_request, &*temp_file_path).await?;
+    let download_result = http::download_file(&client, download_request, &*temp_file_path,
+                                              Some(expected_len)).await?;
 
     if download_result.stats.len != expected_len {
         bail!("Download job file was the wrong size \

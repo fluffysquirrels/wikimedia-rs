@@ -1,20 +1,10 @@
-use anyhow::Context;
 use crate::{
     args::{CommonArgs, DumpNameArg, FileNameRegexArg, JobNameArg, VersionSpecArg},
     dump::{
         self,
-        download::DownloadJobFileResultKind
     },
-    http,
     Result,
-    TempDir,
-    util::{
-        self,
-        fmt::{Bytes, TransferStats},
-    },
 };
-use std::time::Instant;
-use valuable::Valuable;
 
 /// Download latest dump job files
 #[derive(clap::Args, Clone, Debug)]
@@ -55,75 +45,19 @@ pub struct Args {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let start_time = Instant::now();
-
     let dump_name = &args.dump_name.value;
     let version_spec = &args.version_spec.value;
     let job_name = &args.job_name.value;
 
-    let metadata_client = http::metadata_client(&args.common)?;
-
-    let (version, files) = dump::download::get_file_infos(
-        &metadata_client,
+    let _ = dump::download::download_job(
         dump_name,
         version_spec,
         job_name,
-        args.file_name_regex.value.as_ref()).await?;
-
-    let temp_dir = TempDir::create(&*args.common.out_dir(), args.keep_temp_dir)?;
-    let download_client = http::download_client(&args.common)?;
-
-    let mut download_ok: u64 = 0;
-    let mut download_len: u64 = 0;
-    let mut existing_ok: u64 = 0;
-    let mut existing_len: u64 = 0;
-
-    // let progress = indicatif::ProgressBar::new(files.len().try_into()
-    //                                                 .expect("convert usize to u64"));
-    // progress.set_style(indicatif::ProgressStyle::with_template(
-    //     "{bar:40} {pos}/{len} files {elapsed_precise}, eta {eta_precise} {msg}")?);
-    // progress.enable_steady_tick(Duration::from_millis(100));
-
-    for (_file_name, file_meta) in files.iter() {
-        let res =
-            dump::download::download_job_file(&download_client, dump_name, &version,
-                                              job_name, &*args.mirror_url, file_meta,
-                                              &*args.common.out_dir(), &temp_dir).await
-                .with_context(|| format!(
-                    "while downloading job file \
-                     dump='{dump}' \
-                     version='{version}' \
-                     job='{job}' \
-                     file='{file_rel_url:?}'",
-                    dump = dump_name.0,
-                    version = version.0,
-                    job = job_name.0,
-                    file_rel_url = &file_meta.url))?;
-        match res.kind {
-            DownloadJobFileResultKind::DownloadOk => {
-                download_ok += 1;
-                download_len += res.stats.len.0;
-            },
-            DownloadJobFileResultKind::ExistingOk => {
-                existing_ok += 1;
-                existing_len += res.stats.len.0;
-            },
-        };
-        // progress.inc(1);
-    }
-
-    // progress.abandon_with_message("All done!");
-
-    drop(temp_dir);
-
-    let duration = start_time.elapsed();
-
-    tracing::info!(download_ok,
-                   download_stats = TransferStats::new(Bytes(download_len), duration).as_value(),
-                   existing_ok,
-                   existing_stats = TransferStats::new(Bytes(existing_len), duration).as_value(),
-                   duration = util::fmt::Duration(duration).as_value(),
-                   "download command complete");
+        args.file_name_regex.value.as_ref(),
+        args.keep_temp_dir,
+        &args.common,
+        &*args.mirror_url,
+    ).await?;
 
     Ok(())
 }

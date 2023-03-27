@@ -16,7 +16,7 @@ use crate::{
     },
     Error,
     Result,
-    util::fmt::{ByteRate, Bytes, Duration},
+    util::fmt::{self, ByteRate, Bytes, Duration},
 };
 use rayon::prelude::*;
 use std::{
@@ -24,7 +24,7 @@ use std::{
     io::Write,
     path::PathBuf,
     result::Result as StdResult,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicI64, AtomicU64, Ordering},
     time::Instant,
 };
 use valuable::Valuable;
@@ -122,6 +122,13 @@ impl Store {
         let pages_total = AtomicU64::new(0);
         let total_source_bytes_read = AtomicU64::new(0);
 
+        const PROGRESS_INTERVAL_SECS: i64 = 2;
+        assert!(PROGRESS_INTERVAL_SECS > 0);
+
+        let next_progress_ts = AtomicI64::new(
+            chrono::Utc::now().timestamp()
+             + PROGRESS_INTERVAL_SECS);
+
         let end = files.try_for_each(
             |file: Result<OpenJobFile>| -> StdResult<(), ImportEnd> {
                 let OpenJobFile {
@@ -186,99 +193,50 @@ impl Store {
                         total_source_bytes_read.fetch_add(source_bytes_read_diff,
                                                           Ordering::SeqCst);
 
-                    // Calculate derived stats.
-                    let percent_complete =
-                        ((total_source_bytes_read_curr as f64) /
-                         (total_source_bytes.0 as f64)) * 100.0;
+                    let now = chrono::Utc::now();
+                    let now_ts = now.timestamp();
+                    let curr_next_progress_ts = next_progress_ts.load(Ordering::SeqCst);
 
-                    let duration_so_far = start.elapsed();
-                    let total_source_bytes_remaining =
-                        total_source_bytes.0 - total_source_bytes_read_curr;
+                    if now_ts >= curr_next_progress_ts {
+                        // The current time is after next_progress_ts, which is when
+                        // we wanted to make the next update.
+                        //
+                        // So some thread should print an update.
+                        // Do a compare exchange on next_progress_ts to determine
+                        // if we're the first thread to notice an update is needed,
+                        // and if so print a progress update.
+                        let candidate_next_progress_ts = now_ts + PROGRESS_INTERVAL_SECS;
+                        let cmp_res = next_progress_ts.compare_exchange(
+                            curr_next_progress_ts,
+                            candidate_next_progress_ts,
+                            Ordering::SeqCst /* success */,
+                            Ordering::SeqCst /* failure */);
 
-                    let est_remaining_duration: Option<Duration> =
-                        match total_source_bytes_read_curr {
-                            0 => None,
-                            bytes_done => {
-                                let secs: f64 =
-                                    (duration_so_far.as_secs_f64() / (bytes_done as f64))
-                                        * (total_source_bytes_remaining as f64);
+                        if cmp_res.is_ok() {
+                            // We succeded in the update, so we are
+                            // the thread to print the current
+                            // progress.
+                            if let Err(e) =
+                                Self::print_import_progress(start,
+                                                            &file_spec,
+                                                            chunk_bytes_total_curr,
+                                                            pages_total_curr,
+                                                            chunks_len_curr,
+                                                            total_source_bytes.0,
+                                                            total_source_bytes_read_curr,
+                                                            source_bytes_read_diff) {
 
-                                let nanos = secs * 1_000_000_000.0;
-                                let dur = std::time::Duration::from_nanos(nanos as u64);
-                                Some(Duration(dur))
+                                return Err(ImportEnd::Err(e));
                             }
-                        };
-
-                    let now = chrono::Local::now();
-
-                    let eta: Option<String> = est_remaining_duration.and_then(
-                        |dur| -> Option<String> {
-                            let chrono_time =
-                                now
-                                    + match chrono::Duration::from_std(dur.0) {
-                                        Ok(chrono_dur) => chrono_dur,
-                                        Err(_e) => return None,
-                                    };
-                            let s = chrono_time.to_rfc3339_opts(chrono::SecondsFormat::Secs,
-                                                                true /* use_z */)
-                                               .replace('T', " ");
-                            Some(s)
-                        });
-
-                    let percent_complete_str = format!("{percent_complete:02.1}");
-
-                    let res = writeln!(std::io::stderr(),
-                           "{now}     Import: {percent_complete_str}%\
-                            {remaining_str}\
-                            {eta}",
-                           now = now.to_rfc3339_opts(chrono::SecondsFormat::Secs,
-                                                     true /* use_z */)
-                                    .replace('T', " "),
-                           remaining_str = match est_remaining_duration {
-                               Some(dur) => format!("   remaining: {:.2?}", dur.0),
-                               None => "".to_string(),
-                           },
-                           eta = match eta {
-                               Some(ref eta) => format!("   ETA: {eta}"),
-                               None => "".to_string(),
-                           },
-                    );
-
-                    if let Err(e) = res {
-                        return Err(ImportEnd::Err(e.into()));
-                    }
-
-                    tracing::debug!(
-                        // Store current stats
-                        chunk_bytes_total = Bytes(chunk_bytes_total_curr).as_value(),
-                        pages_total = pages_total_curr,
-                        chunks_len = Bytes(chunks_len_curr).as_value(),
-
-                        // Import total raw stats
-                        total_source_bytes_read = Bytes(total_source_bytes_read_curr).as_value(),
-                        total_source_bytes = total_source_bytes.as_value(),
-                        total_source_bytes_remaining =
-                            Bytes(total_source_bytes_remaining).as_value(),
-                        duration_so_far = Duration(duration_so_far).as_value(),
-
-                        // Import total derived stats
-                        percent_complete,
-                        percent_complete_str,
-                        est_remaining_duration = est_remaining_duration.as_value(),
-                        eta,
-
-                        // This file stats
-                        input_file = %file_spec.path.display(),
-                        source_bytes_read = Bytes(source_bytes_read_diff).as_value(),
-                        // WIP: uncompressed_bytes_read = Bytes(uncompressed_bytes_read_diff.get()),
-                        "Chunk import done");
-                };
+                        }
+                    } // End check whether we should print progress.
+                }; // Loop while there are more pages in the import file.
 
                 tracing::debug!(input_file = %file_spec.path.display(),
                                 "Finished importing from file");
 
                 Ok(())
-            });
+            }); // parallel for each over all files.
 
         // Log stats before checking `end` for an Error.
         let chunk_bytes_total = Bytes(chunk_bytes_total.into_inner());
@@ -332,6 +290,99 @@ impl Store {
         };
 
         Ok(res)
+    }
+
+    fn print_import_progress(
+        start: Instant,
+        file_spec: &FileSpec,
+        chunk_bytes_total_curr: u64,
+        pages_total_curr: u64,
+        chunks_len_curr: u64,
+        total_source_bytes: u64,
+        total_source_bytes_read_curr: u64,
+        source_bytes_read_diff: u64,
+     ) -> Result<()> {
+
+        let now = chrono::Local::now();
+
+        // Calculate derived stats.
+        let percent_complete =
+            ((total_source_bytes_read_curr as f64) /
+             (total_source_bytes as f64)) * 100.0;
+
+        let duration_so_far = start.elapsed();
+        let total_source_bytes_remaining =
+            total_source_bytes - total_source_bytes_read_curr;
+
+        let est_remaining_duration: Option<Duration> =
+            match total_source_bytes_read_curr {
+                0 => None,
+                bytes_done => {
+                    let secs: f64 =
+                        (duration_so_far.as_secs_f64() / (bytes_done as f64))
+                        * (total_source_bytes_remaining as f64);
+
+                    let nanos = secs * 1_000_000_000.0;
+                    let dur = std::time::Duration::from_nanos(nanos as u64);
+                    Some(Duration(dur))
+                }
+            };
+
+        let eta: Option<String> = est_remaining_duration.and_then(
+            |dur| -> Option<String> {
+                let chrono_time =
+                    now
+                    + match chrono::Duration::from_std(dur.0) {
+                        Ok(chrono_dur) => chrono_dur,
+                        Err(_e) => return None,
+                    };
+                let s = fmt::chrono_time(chrono_time);
+                Some(s)
+            });
+
+        let percent_complete_str = format!("{percent_complete:3.1}%");
+
+        writeln!(std::io::stdout(),
+                 "{now}     Import: \
+                  {percent_complete_str}\
+                  {remaining_str}\
+                  {eta}",
+                 now = fmt::chrono_time(now),
+                 remaining_str = match est_remaining_duration {
+                     Some(dur) => format!("   remaining: {:.2?}", dur.0),
+                     None => "".to_string(),
+                 },
+                 eta = match eta {
+                     Some(ref eta) => format!("   ETA: {eta}"),
+                     None => "".to_string(),
+                 })?;
+
+        tracing::debug!(
+            // Store current stats
+            chunk_bytes_total = Bytes(chunk_bytes_total_curr).as_value(),
+            pages_total = pages_total_curr,
+            chunks_len = Bytes(chunks_len_curr).as_value(),
+
+            // Import total raw stats
+            total_source_bytes_read = Bytes(total_source_bytes_read_curr).as_value(),
+            total_source_bytes = total_source_bytes.as_value(),
+            total_source_bytes_remaining =
+                Bytes(total_source_bytes_remaining).as_value(),
+            duration_so_far = Duration(duration_so_far).as_value(),
+
+            // Import total derived stats
+            percent_complete,
+            percent_complete_str,
+            est_remaining_duration = est_remaining_duration.as_value(),
+            eta,
+
+            // This chunk stats
+            input_file = %file_spec.path.display(),
+            source_bytes_read = Bytes(source_bytes_read_diff).as_value(),
+            // WIP: uncompressed_bytes_read = Bytes(uncompressed_bytes_read_diff.get()),
+            "Chunk import done");
+
+        Ok(())
     }
 
     pub fn get_category(&self, slug_lower_bound: Option<&CategorySlug>, limit: Option<u64>

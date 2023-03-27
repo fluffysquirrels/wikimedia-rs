@@ -4,7 +4,7 @@ use anyhow::{bail, Context, format_err};
 use crate::{
     args,
     Result,
-    util::fmt::{Bytes, TransferStats},
+    util::fmt::{self, Bytes, Duration, TransferStats},
 };
 use encoding_rs::{Encoding, UTF_8};
 use sha1::{Digest, Sha1};
@@ -12,7 +12,7 @@ use std::{
     convert::TryFrom,
     fmt::Debug,
     path::Path,
-    time::{Duration, Instant},
+    time::{Duration as StdDuration, Instant},
 };
 use tokio::io::AsyncWriteExt;
 use tokio_stream::StreamExt;
@@ -87,7 +87,7 @@ impl Structable for StatusCode {
 /// Currently enables gzip compression, HTTP caching, and request and connection timeouts.
 pub fn metadata_client(args: &args::CommonArgs) -> Result<Client> {
     let inner = inner_client_common()?
-                    .timeout(Duration::from_secs(15))
+                    .timeout(StdDuration::from_secs(15))
                     .gzip(true)
                     .build()?;
 
@@ -119,7 +119,7 @@ fn inner_client_common() -> Result<reqwest::ClientBuilder> {
                                pkg = env!("CARGO_PKG_NAME"),
                                version = env!("CARGO_PKG_VERSION"),
                                repo = env!("CARGO_PKG_REPOSITORY")))
-           .connect_timeout(Duration::from_secs(10))
+           .connect_timeout(StdDuration::from_secs(10))
     )
 }
 
@@ -149,6 +149,7 @@ pub async fn download_file(
     client: &Client,
     request: reqwest::Request,
     file_path: &Path,
+    expected_len: Option<Bytes>,
 ) -> Result<DownloadFileResult> {
 
     let start_time = Instant::now();
@@ -158,10 +159,10 @@ pub async fn download_file(
 
     // Closure to add context to errors.
     (async || {
-
+        // dump::download already logs the start of a file download at level info.
         tracing::debug!(url = %url.clone(),
-                        method = %method.clone(),
-                        "http::download_file() beginning");
+                       method = %method.clone(),
+                       "http::download_file() beginning");
 
         let mut file = tokio::fs::OpenOptions::new()
             .create_new(true)
@@ -184,6 +185,10 @@ pub async fn download_file(
 
         let mut bytes_stream = download_res.bytes_stream();
         let mut sha1_hasher = Sha1::new();
+        let mut bytes_written: u64 = 0;
+        let mut last_progress_update = chrono::Utc::now();
+
+        let progress_interval = chrono::Duration::seconds(2);
 
         while let Some(chunk) = bytes_stream.next().await {
             let chunk = chunk
@@ -192,7 +197,16 @@ pub async fn download_file(
             tokio::io::copy(&mut chunk.as_ref(), &mut file)
                 .await
                 .with_context(|| "while writing a downloaded chunk to disk")?;
-        }
+
+            bytes_written += u64::try_from(chunk.len()).expect("usize into u64");
+
+            let now = chrono::Utc::now();
+            let next_update_due = last_progress_update + progress_interval;
+            if next_update_due < now {
+                print_download_progress(bytes_written, start_time, expected_len);
+                last_progress_update = now;
+            }
+        } // end of while bytes_chunk = next().
 
         file.flush().await?;
         file.sync_all().await?;
@@ -223,6 +237,55 @@ pub async fn download_file(
                                         method={method} \
                                         file_path={file_path}",
                                        file_path = file_path.display()))
+}
+
+fn print_download_progress(
+    bytes_written: u64,
+    start_time: Instant,
+    expected_len: Option<Bytes>,
+) {
+    let now = chrono::Local::now();
+
+    let now_str = now.to_rfc3339_opts(chrono::SecondsFormat::Secs,
+                                      true /* use_z */);
+
+    let bytes_written_str = Bytes(bytes_written).to_string();
+    let duration_so_far = start_time.elapsed();
+
+    let estimate_str = match expected_len {
+        Some(len) if len.0 > 0 && bytes_written > 0 => {
+            let bytes_remaining = Bytes(len.0 - bytes_written);
+
+            let percent_complete =
+                ((bytes_written as f64) / (len.0 as f64)) * 100.0;
+            let percent_complete_str = format!("{percent_complete:3.1}%");
+
+            let remaining_secs: f64 =
+                (duration_so_far.as_secs_f64() / (bytes_written as f64))
+                * (bytes_remaining.0 as f64);
+            let remaining_nanos = remaining_secs * 1_000_000_000.0;
+            let remaining =
+                StdDuration::from_nanos(remaining_nanos as u64);
+            let remaining_str = Duration(remaining).to_string();
+
+            let eta = chrono::Duration::from_std(remaining)
+                          .ok().map(|dur| now + dur);
+            let eta_str = match eta {
+                Some(eta) => fmt::chrono_time(eta),
+                None => "".to_string(),
+            };
+
+            format!("{percent_complete_str}   \
+                     remaining: {remaining_str}   \
+                     eta: {eta_str}")
+        },
+        _ => "".to_string(),
+    }; // end of calculate estimate-str
+
+    println!("{now_str}     HTTP download file:  \
+              {bytes_written_str} written   \
+              {estimate_str}"
+             );
 }
 
 #[tracing::instrument(

@@ -143,6 +143,12 @@ impl Debug for Duration {
     }
 }
 
+impl Display for Duration {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
 impl Duration {
     const FIELDS: &[NamedField<'static>] = &[
         NamedField::new("secs"),
@@ -187,4 +193,12 @@ pub fn bytes_per_second(rate: f64) -> String {
         .with_decimals(2)
         .with_units("B/s")
         .format(rate)
+}
+
+pub fn chrono_time<Tz: chrono::TimeZone>(dt: chrono::DateTime<Tz>) -> String
+    where <Tz as chrono::TimeZone>::Offset: Display
+{
+    dt.to_rfc3339_opts(chrono::SecondsFormat::Secs,
+                       true /* use_z */)
+      .replace('T', " ")
 }

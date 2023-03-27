@@ -462,6 +462,7 @@ impl<'index> ImportBatchBuilder<'index> {
                        .into_table(PageCategoriesIden::Table)
                        .columns([PageCategoriesIden::MediawikiId,
                                  PageCategoriesIden::CategorySlug])
+                       .on_conflict(OnConflict::new().do_nothing().to_owned())
                        .to_owned(),
                 index.opts.max_values_per_batch),
         }

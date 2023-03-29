@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Display},
+    fmt::{Debug, Display, Write},
     time::Duration as StdDuration,
 };
 use valuable::{Fields, NamedField, NamedValues, Structable, StructDef, Valuable, Value, Visit};
@@ -24,6 +24,11 @@ pub struct TransferStats {
 
 #[derive(Clone, Copy)]
 pub struct Duration(pub StdDuration);
+
+const MS:     StdDuration = StdDuration::from_millis(1);
+const SECOND: StdDuration = StdDuration::from_secs(1);
+const MINUTE: StdDuration = StdDuration::from_secs(60);
+const HOUR:   StdDuration = StdDuration::from_secs(60 * 60);
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -139,7 +144,36 @@ impl TransferStats {
 
 impl Debug for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:.2?}", self.0)
+        let dur: StdDuration = self.0;
+        let mut int_secs = dur.as_secs();
+
+        let mut out = String::new();
+
+        if int_secs >= HOUR.as_secs() {
+            let hours = int_secs / HOUR.as_secs();
+            int_secs = int_secs % HOUR.as_secs();
+            write!(out, "{hours}h")?;
+        }
+
+        if int_secs >= MINUTE.as_secs() {
+            let mins = int_secs / MINUTE.as_secs();
+            int_secs = int_secs % MINUTE.as_secs();
+            write!(out, " {mins}m")?;
+        }
+
+        if int_secs > 0 {
+            write!(out, " {int_secs}s")?;
+        }
+
+        let ms = dur.subsec_millis();
+
+        if ms > 0 || out.is_empty() {
+            write!(out, " {ms}ms")?;
+        }
+
+        f.write_str(out.trim_start())?;
+
+        Ok(())
     }
 }
 
@@ -201,4 +235,55 @@ pub fn chrono_time<Tz: chrono::TimeZone>(dt: chrono::DateTime<Tz>) -> String
     dt.to_rfc3339_opts(chrono::SecondsFormat::Secs,
                        true /* use_z */)
       .replace('T', " ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Duration, MS, SECOND, MINUTE, HOUR};
+
+    macro_rules! case {
+        ($input:expr, $expected:literal) => {
+            ($input, $expected, format!("Case from {file}:{linum}:\n\
+                                         |    input:    {input}\n\
+                                         |    expected: {expected}",
+                                        file = file!(),
+                                        linum = line!(),
+                                        input = stringify!($input),
+                                        expected = stringify!($expected)))
+        }
+    }
+
+    #[test]
+    fn duration_formatting() {
+        let cases = &[
+            case!(SECOND * 3,                                   "3s"           ),
+            case!(MS * 333,                                     "333ms"        ),
+            case!(SECOND + MS * 333,                            "1s 333ms"     ),
+            case!(MINUTE * 2,                                   "2m"           ),
+            case!(MINUTE * 2 + SECOND * 1,                      "2m 1s"        ),
+            case!(HOUR * 1 + MINUTE * 2 + SECOND * 1,           "1h 2m 1s"     ),
+            case!(HOUR * 1 + MINUTE * 2 + SECOND * 1 + MS * 10, "1h 2m 1s 10ms"),
+        ];
+
+        let mut fails: u64 = 0;
+
+        for (input, expected, label) in cases.iter() {
+            let input = Duration(input.clone());
+            let output = input.to_string(); // format!("{input:?}");
+            println!("{label}\n\
+                      |    output:   \"{output}\"\n");
+
+            if *expected == &*output {
+                println!("OK");
+            } else {
+                println!("FAIL!");
+                fails += 1;
+            }
+            println!("----\n");
+        }
+
+        println!("fails = {fails}\n\n");
+
+        assert!(fails == 0);
+    }
 }

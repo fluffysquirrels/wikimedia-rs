@@ -2,6 +2,16 @@
 
 ## WIP
 
+* Prepare PR for `tracing-bunyan-formatter`  
+  <https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30>  
+  <https://github.com/LukeMathWalker/tracing-bunyan-formatter/pull/31>
+
+    * [x] README.md `## Optional features`
+    * [x] CI builds and tests with --features valuable
+    * [x] Test cases for valuable structs
+    * [x] docs.rs config, in particular feature flags.
+    * [x] Example in /examples
+
 * Progress on import.
     * Output on a timer, not on chunk end.
     * Remaining string progress: hours, minutes, seconds.

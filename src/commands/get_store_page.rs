@@ -33,6 +33,9 @@ pub struct Args {
     /// HTML requires `pandoc` to be installed and on your path.
     #[arg(long, value_enum, default_value_t = OutputType::Json)]
     out: OutputType,
+
+    #[arg(long)]
+    max_count: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -40,6 +43,15 @@ enum OutputType {
     Html,
     Json,
     JsonWithBody,
+
+    /// Copy the page's title and IDs to an in-memory dump::Page object,
+    /// then discard it without outputting anything.
+    LoadDiscard,
+
+    /// Copy the page's IDs to an in-memory object,
+    /// then discard it without outputting anything.
+    LoadIdDiscard,
+
     None,
 }
 
@@ -60,21 +72,26 @@ pub async fn main(args: Args) -> Result<()> {
               opts = arg_groups_given.join(", "));
     }
 
+    let mut count: u64 = 0;
+
     match (args.store_page_id, args.mediawiki_id, args.slug.as_ref(), args.chunk_id) {
         (Some(store_page_id), None, None, None) => {
             let page = store.get_page_by_store_id(store_page_id)?
                             .ok_or_else(|| format_err!("page not found by id."))?;
             output_page(&args, page.borrow()?, page.store_id()).await?;
+            count += 1;
         },
         (None, Some(mediawiki_id), None, None) => {
             let page = store.get_page_by_mediawiki_id(mediawiki_id)?
                             .ok_or_else(|| format_err!("page not found by mediawiki-id."))?;
             output_page(&args, page.borrow()?, page.store_id()).await?;
+            count += 1;
         },
         (None, None, Some(slug), None) => {
             let page = store.get_page_by_slug(slug)?
                             .ok_or_else(|| format_err!("page not found by slug."))?;
             output_page(&args, page.borrow()?, page.store_id()).await?;
+            count += 1;
         },
         (None, None, None, Some(chunk_id)) => {
             check_output_type_not_html(args.out)?;
@@ -82,6 +99,11 @@ pub async fn main(args: Args) -> Result<()> {
                              .ok_or_else(|| format_err!("chunk not found by id."))?;
             for (store_id, page) in chunk.pages_iter()? {
                 output_page(&args, page, store_id).await?;
+                count += 1;
+
+                if args.max_count.is_some() && count >= args.max_count.unwrap() {
+                    break;
+                }
             }
         },
         (None, None, None, None) => {
@@ -90,17 +112,26 @@ pub async fn main(args: Args) -> Result<()> {
                                      .try_collect::<Vec<store::ChunkId>>()?;
             chunk_ids.sort();
 
+            'by_chunk:
             for chunk_id in chunk_ids.into_iter() {
                 tracing::debug!(?chunk_id, "Outputting pages from new chunk");
                 let chunk = store.map_chunk(chunk_id)?
                                  .ok_or_else(|| format_err!("chunk not found by id."))?;
+                '_by_page:
                 for (store_id, page) in chunk.pages_iter()? {
                     output_page(&args, page, store_id).await?;
+                    count += 1;
+
+                    if args.max_count.is_some() && count >= args.max_count.unwrap() {
+                        break 'by_chunk;
+                    }
                 }
             }
         },
         _ => unreachable!(),
     } // End of match on input ID variants.
+
+    tracing::info!(page_count = count, "get-store-page complete");
 
     Ok(())
 }
@@ -118,6 +149,18 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePa
 {
     match args.out {
         OutputType::None => {},
+        OutputType::LoadDiscard => {
+            let page = store::convert_store_page_to_dump_page_without_body(&page)?;
+            drop(page);
+        }
+        OutputType::LoadIdDiscard => {
+            let _ = page.get_ns_id();
+            let _ = page.get_id();
+            let _ = if page.has_revision() {
+                let revision = page.get_revision()?;
+                let _ = revision.get_id();
+            };
+        }
         OutputType::Json => {
             let page = store::convert_store_page_to_dump_page_without_body(&page)?;
             serde_json::to_writer_pretty(&std::io::stdout(), &page)?;

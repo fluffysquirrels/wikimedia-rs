@@ -1,5 +1,30 @@
 # Notes
+* sqlite index size pretty print snippet:
+```
+sqlite3 out/store/index/index.db --csv --header \
+    'select * from dbstat where aggregate = true' \
+    | tee out/index_dbstats.csv \
+    | numfmt --delimiter , --header --field 6,7,10 --to iec-i --suffix B \
+    | numfmt --delimiter , --header --field 3,5 --to si
+    | mlr --icsv --opprint cat
+```
+* Snippet to find duplicate (wikimedia_id,category) pairs in the page store:
+```
+RUST_LOG="wmd=info" wmd get-store-page --out json-with-body \
+     | jq -c '.id as $id | .title as $title | .revision?.categories[] | { id: $id, title: $title, category: . }' \
+     | pv --cursor --line-mode --name records \
+     | pv --cursor --name uncompressed \
+     | lz4 --compress \
+     | pv --cursor --name compressed \
+     > out/cats
 
+# out:
+#   records: 41.8M 0:47:54 [14.5k/s]
+# uncompressed: 3.56GiB 0:47:54 [1.27MiB/s]
+# compressed:  807MiB 0:47:54 [ 287KiB/s]
+
+
+```
 * File locking
     * Needed to avoid simulataneous imports trying to write to the same chunk file.
     * Cross platform: https://docs.rs/fslock/latest/fslock/

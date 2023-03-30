@@ -13,7 +13,6 @@
     * [x] Example in /examples
 
 * Progress on import.
-    * Tidy up store::import(), it's too long.
 * Progress on download.
     * Add padding.
 
@@ -379,7 +378,8 @@
 
 ### Code quality
 
-* Covering indexes for index operations.
+* Tidy up store::import(), it's too long.
+* Covering indexes for index operations?
 * newtype tuple structs
     * MediawikiId
     * NamespaceId
@@ -390,7 +390,6 @@
 * Futures tidy up in web, get-store-page and store
     * Try to use `left_future` and `right_future` instead of boxing
     * Revisit removing async closures (in http and operations modules)
-* Put SHA1 hashes in a tuple struct with a custom formatter.
 * Split dump::local
     * XML parsing to a different file.
 * Tidy up args to `operations::download_job_file`

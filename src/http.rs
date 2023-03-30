@@ -4,7 +4,7 @@ use anyhow::{bail, Context, format_err};
 use crate::{
     args,
     Result,
-    util::fmt::{self, Bytes, Duration, TransferStats},
+    util::fmt::{self, Bytes, Duration, Sha1Hash, TransferStats},
 };
 use encoding_rs::{Encoding, UTF_8};
 use sha1::{Digest, Sha1};
@@ -21,8 +21,8 @@ use valuable::{Fields, NamedField, NamedValues, Structable, StructDef, Valuable,
 
 #[derive(Clone, Debug, Valuable)]
 pub struct DownloadFileResult {
-    /// SHA1 hash calculated over the downloaded file body, formatted as a lower-case hex string.
-    pub sha1: String,
+    /// SHA1 hash calculated over the downloaded file body.
+    pub sha1: Sha1Hash,
     pub stats: TransferStats,
     pub response_code: StatusCode,
 }
@@ -215,14 +215,13 @@ pub async fn download_file(
 
         drop(file);
 
-        let sha1_hash = sha1_hasher.finalize();
-        let sha1_hash_string = hex::encode(sha1_hash);
+        let sha1_hash: [u8; 20] = sha1_hasher.finalize().into();
 
         let duration = start_time.elapsed();
 
         let res = DownloadFileResult {
             response_code: download_res_code,
-            sha1: sha1_hash_string,
+            sha1: Sha1Hash(sha1_hash),
             stats: TransferStats::new(file_len, duration),
         };
 

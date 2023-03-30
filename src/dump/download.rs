@@ -11,7 +11,7 @@ use crate::{
     UserRegex,
     util::{
         self,
-        fmt::{Bytes, TransferStats},
+        fmt::{Bytes, Sha1Hash, TransferStats},
     },
 };
 use sha1::{Sha1, Digest};
@@ -399,10 +399,10 @@ pub async fn download_job_file(
         None => tracing::warn!(url, "No expected SHA1 hash given for job file"),
         Some(expected_sha1) => {
             let expected_sha1 = expected_sha1.to_lowercase();
-            if download_result.sha1 != expected_sha1 {
+            let computed_sha1 = download_result.sha1.to_string();
+            if computed_sha1 != expected_sha1 {
                 bail!("Bad SHA1 hash for downloaded job file url='{url}' \
-                       expected_sha1={expected_sha1}, computed_sha1={computed_sha1}",
-                      computed_sha1 = download_result.sha1);
+                       expected_sha1={expected_sha1}, computed_sha1={computed_sha1}");
             }
 
             tracing::debug!(sha1 = expected_sha1,
@@ -546,7 +546,7 @@ async fn check_existing_file(
 
         let existing_sha1 = calculate_file_sha1(&*path).await?;
 
-        if expected_sha1 == existing_sha1 {
+        if expected_sha1 == existing_sha1.to_string() {
             // Existing file's SHA1 hash was correct, return Ok.
             tracing::info!(file_path = %path.display(),
                            url,
@@ -557,7 +557,7 @@ async fn check_existing_file(
             // Existing file's SHA1 hash was incorrect, delete it.
             tracing::warn!(file_len = expected_len.as_value(),
                            file_path = %path.display(),
-                           existing_sha1,
+                           %existing_sha1,
                            expected_sha1,
                            url,
                            "Existing file bad: file size correct but SHA1 hash \
@@ -583,8 +583,8 @@ async fn check_existing_file(
 /// Calculate SHA1 hash for data in a file, formatted as a lower-case hex string.
 async fn calculate_file_sha1(
     path: &Path,
-) -> Result<String> {
-    (async || -> Result<String> {
+) -> Result<Sha1Hash> {
+    (async || -> Result<Sha1Hash> {
         let file = tokio::fs::File::open(&*path)
                        .await
                        .with_context(|| "while opening the file")?;
@@ -596,9 +596,8 @@ async fn calculate_file_sha1(
             sha1_hasher.update(&chunk);
         }
 
-        let sha1_bytes = sha1_hasher.finalize();
-        let sha1_string = hex::encode(sha1_bytes);
-        Ok(sha1_string)
+        let sha1_bytes: [u8; 20] = sha1_hasher.finalize().into();
+        Ok(Sha1Hash(sha1_bytes))
     })().await.with_context(|| format!("while calculating the SHA1 hash for a file \
                                         path={path}",
                                        path = path.display()))

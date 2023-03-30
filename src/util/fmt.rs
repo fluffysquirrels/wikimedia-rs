@@ -2,7 +2,13 @@ use std::{
     fmt::{Debug, Display, Write},
     time::Duration as StdDuration,
 };
-use valuable::{Fields, NamedField, NamedValues, Structable, StructDef, Valuable, Value, Visit};
+use valuable::{
+    Fields, NamedField, NamedValues, Structable, StructDef, Tuplable, TupleDef, Valuable,
+    Value, Visit
+};
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Sha1Hash(pub [u8; 20]);
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Bytes(pub u64);
@@ -31,6 +37,38 @@ const MS:     StdDuration = StdDuration::from_millis(1);
 const SECOND: StdDuration = StdDuration::from_secs(1);
 const MINUTE: StdDuration = StdDuration::from_secs(60);
 const HOUR:   StdDuration = StdDuration::from_secs(60 * 60);
+
+impl Debug for Sha1Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Sha1Hash({self})")
+    }
+}
+
+impl Display for Sha1Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(&*hex::encode(self.0))
+    }
+}
+
+impl Valuable for Sha1Hash {
+    fn as_value(&self) -> Value<'_> {
+        // We don't store a String of the hash, so can't return an &str
+        // and use `Value<'a>::String(&'a str)`. Encode as a tuple instead.
+        Value::Tuplable(self)
+    }
+
+    fn visit(&self, visit: &mut dyn Visit) {
+        let s = self.to_string();
+        let val = Value::String(&*s);
+        visit.visit_unnamed_fields(&[val]);
+    }
+}
+
+impl Tuplable for Sha1Hash {
+    fn definition(&self) -> TupleDef {
+        TupleDef::new_static(1)
+    }
+}
 
 impl Debug for Bytes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

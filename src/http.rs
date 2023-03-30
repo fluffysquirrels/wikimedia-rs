@@ -274,15 +274,15 @@ fn print_download_progress(
                 None => "".to_string(),
             };
 
-            format!("{percent_complete_str}   \
-                     remaining: {remaining_str}   \
+            format!("{percent_complete_str:>6}   \
+                     remaining: {remaining_str:>16}   \
                      eta: {eta_str}")
         },
         _ => "".to_string(),
     }; // end of calculate estimate-str
 
     println!("{now_str}     HTTP download file:  \
-              {bytes_written_str} written   \
+              {bytes_written_str:>11} written   \
               {estimate_str}"
              );
 }

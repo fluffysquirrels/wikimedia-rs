@@ -12,10 +12,6 @@
     * [x] docs.rs config, in particular feature flags.
     * [x] Example in /examples
 
-* Progress on import.
-* Progress on download.
-    * Add padding.
-
 ## Must do before publishing
 
 * Rename bin name to wmdl (wmd is taken on crates.io)

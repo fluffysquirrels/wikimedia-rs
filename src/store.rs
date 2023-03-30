@@ -336,7 +336,7 @@ impl Store {
 
         writeln!(std::io::stdout(),
                  "{now}     Import: \
-                  {percent_complete_str}\
+                  {percent_complete_str:>6}\
                   {remaining_str}\
                   {eta}",
                  now = fmt::chrono_time(now),

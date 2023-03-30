@@ -200,7 +200,7 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePa
 
                 // Closure to add error context.
                 (|| -> Result<()> {
-                    println!("Write output HTML to {path} . . .", path = path.display());
+                    println!("\nWrite output HTML to {path} . . .\n", path = path.display());
 
                     fs::create_dir_all(parent)?;
                     fs::write(&*path, html)?;

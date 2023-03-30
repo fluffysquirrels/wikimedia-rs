@@ -77,24 +77,38 @@ async fn main() -> Result<()> {
         tracing::debug!(args = ?args.clone(), "parsed CLI args");
     }
 
-    match args.command {
-        Command::ClearStore(cmd_args) => commands::clear_store::main(cmd_args).await?,
-        Command::Completion(cmd_args) => commands::completion::main(cmd_args).await?,
-        Command::Download(cmd_args) => commands::download::main(cmd_args).await?,
-        Command::GetChunk(cmd_args) => commands::get_chunk::main(cmd_args).await?,
-        Command::GetDump(cmd_args) => commands::get_dump::main(cmd_args).await?,
-        Command::GetDumpPage(cmd_args) => commands::get_dump_page::main(cmd_args).await?,
-        Command::GetFileInfo(cmd_args) => commands::get_file_info::main(cmd_args).await?,
-        Command::GetJob(cmd_args) => commands::get_job::main(cmd_args).await?,
-        Command::GetStorePage(cmd_args) => commands::get_store_page::main(cmd_args).await?,
-        Command::GetVersion(cmd_args) => commands::get_version::main(cmd_args).await?,
-        Command::ImportDump(cmd_args) => commands::import_dump::main(cmd_args).await?,
-        Command::Web(cmd_args) => commands::web::main(cmd_args).await?,
-    };
+    // Wrap command dispatch in a closure to log errors.
+    let res = (|| async {
+        match args.command {
+            Command::ClearStore(cmd_args)   => commands::clear_store::   main(cmd_args).await?,
+            Command::Completion(cmd_args)   => commands::completion::    main(cmd_args).await?,
+            Command::Download(cmd_args)     => commands::download::      main(cmd_args).await?,
+            Command::GetChunk(cmd_args)     => commands::get_chunk::     main(cmd_args).await?,
+            Command::GetDump(cmd_args)      => commands::get_dump::      main(cmd_args).await?,
+            Command::GetDumpPage(cmd_args)  => commands::get_dump_page:: main(cmd_args).await?,
+            Command::GetFileInfo(cmd_args)  => commands::get_file_info:: main(cmd_args).await?,
+            Command::GetJob(cmd_args)       => commands::get_job::       main(cmd_args).await?,
+            Command::GetStorePage(cmd_args) => commands::get_store_page::main(cmd_args).await?,
+            Command::GetVersion(cmd_args)   => commands::get_version::   main(cmd_args).await?,
+            Command::ImportDump(cmd_args)   => commands::import_dump::   main(cmd_args).await?,
+            Command::Web(cmd_args)          => commands::web::           main(cmd_args).await?,
+        }
+
+        anyhow::Ok(())
+    })().await;
 
     let duration = util::fmt::Duration(start_time.elapsed());
 
     tracing::info!(duration = duration.as_value(), "wmd::main() returning");
+
+    if let Err(err) = res {
+        // Record an error with tracing as this will output properly formatted JSON (if enabled).
+
+        tracing::error!(%err, "Command returned with an error.");
+
+        // Return the error too so Rust can print a pretty stack trace display.
+        return Err(err)
+    }
 
     Ok(())
 }

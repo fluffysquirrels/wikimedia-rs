@@ -1858,6 +1858,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
+name = "open"
+version = "4.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "075c5203b3a2b698bc72c6c10b1f6263182135751d5013ea66e8a4b3d0562a43"
+dependencies = [
+ "pathdiff",
+]
+
+[[package]]
 name = "openssl"
 version = "0.10.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1942,6 +1951,12 @@ dependencies = [
  "smallvec",
  "windows-sys 0.45.0",
 ]
+
+[[package]]
+name = "pathdiff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
 
 [[package]]
 name = "percent-encoding"
@@ -3473,6 +3488,7 @@ dependencies = [
  "mime",
  "natord",
  "once_cell",
+ "open",
  "platform-dirs",
  "progress-streams",
  "quick-xml",

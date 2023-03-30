@@ -13,16 +13,9 @@
     * [x] Example in /examples
 
 * Progress on import.
-    * Output on a timer, not on chunk end.
-    * Remaining string progress: hours, minutes, seconds.
     * Tidy up store::import(), it's too long.
 * Progress on download.
-* Bug: import broken  
-  ` UNIQUE constraint failed: page_categories.category_slug, page_categories.mediawiki_id`
-    * Add context
-    * Log a warning on duplicates and continue?
-    * Currently just ignore.
-    * Remove duplicate casing in Rust?
+    * Add padding.
 
 ## Must do before publishing
 
@@ -46,6 +39,7 @@
       `http://localhost:8089/enwiki/page/by-title/#Upright`
     * Test: Batch render all pages.
         * pandoc error during rendering for this page (from dump enwiki/20230301/articlesdump):
+          `wmd get-store-page --out html --mediawiki-id 62585868`
         `{
   "ns_id": 0,
   "id": 62585868,
@@ -90,6 +84,8 @@
     * Error handling
     * category by title should redirect to category url
 * cli `get-store-page` by wikimedia ID or title.
+* cli `get-store-page` --out html --open : writes file to
+  out/temp/{slug}.html, opens in your browser.
 * Categories
     * web
         * web: add examples to wmd web index /
@@ -111,7 +107,6 @@
     * Batch import just the files the pages link to from API during import
     * Batch download all enwiki images during import
         * Possibly re-encode large images to save space
-* Delete flatbuffers and sled code, possibly after benchmark.
 * Clean up old files in http_cache.
     * find http_cache -type f -mtime +5
 
@@ -291,6 +286,7 @@
 * Add brief syntax examples for `--file-name-regex`.
 
 ### Telemetry / observability
+* Thread id in bunyan logs.
 * Display custom tracing values (e.g. Duration) differently in console pretty mode.
 * tracing::events for HTTP cache hits and misses, implement CacheManager.
 * tracing complex fields logged as JSON rather than Debug

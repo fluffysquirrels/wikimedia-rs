@@ -46,10 +46,11 @@ pub(in crate::store) struct ImportBatchBuilder<'index> {
 
 struct BatchInsert {
     built: Vec<(String, RusqliteValues)>,
-    curr_num_values: usize,
+    curr_statement_values_len: usize,
     init_fn: Box<dyn Fn() -> InsertStatement>,
     max_batch_len: usize,
     statement: InsertStatement,
+    values_len: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -395,9 +396,12 @@ impl BatchInsert {
     fn new(init_fn: impl Fn() -> InsertStatement + 'static, max_batch_len: usize) -> BatchInsert {
         BatchInsert {
             built: Vec::new(),
-            curr_num_values: 0,
+            curr_statement_values_len: 0,
             max_batch_len,
             statement: init_fn(),
+            values_len: 0,
+
+            // This consumes `init_fn`, so initialise it last.
             init_fn: Box::new(init_fn),
         }
     }
@@ -407,12 +411,13 @@ impl BatchInsert {
     {
         self.statement.values(values)?;
 
-        self.curr_num_values += 1;
+        self.curr_statement_values_len += 1;
+        self.values_len += 1;
 
-        if self.curr_num_values >= self.max_batch_len {
+        if self.curr_statement_values_len >= self.max_batch_len {
             let built_query = self.statement.build_rusqlite(SqliteQueryBuilder);
             self.built.push(built_query);
-            self.curr_num_values = 0;
+            self.curr_statement_values_len = 0;
             let _old = std::mem::replace(&mut self.statement, (self.init_fn)());
         }
 
@@ -420,7 +425,7 @@ impl BatchInsert {
     }
 
     fn execute_all(mut self, txn: &Transaction) -> Result<()> {
-        if self.curr_num_values > 0 {
+        if self.curr_statement_values_len > 0 {
             let built_final = self.statement.build_rusqlite(SqliteQueryBuilder);
             self.built.push(built_final);
         }
@@ -491,6 +496,11 @@ impl<'index> ImportBatchBuilder<'index> {
         Ok(())
     }
 
+    #[tracing::instrument(level = "trace", skip(self),
+                          fields(category_batch.len = self.category_batch.values_len,
+                                 page_batch.len = self.page_batch.values_len,
+                                 page_categories_batch.len =
+                                     self.page_categories_batch.values_len))]
     pub fn commit(self) -> Result<()> {
         let mut conn = self.index.conn()?;
         let txn = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;

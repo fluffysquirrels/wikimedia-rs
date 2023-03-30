@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
 
     let duration = util::fmt::Duration(start_time.elapsed());
 
-    tracing::debug!(duration = duration.as_value(), "wmd::main() returning");
+    tracing::info!(duration = duration.as_value(), "wmd::main() returning");
 
     Ok(())
 }

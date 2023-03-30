@@ -1,6 +1,8 @@
 use anyhow::{bail, Context};
-use crate::Result;
-use hex::ToHex;
+use crate::{
+    Result,
+    util::rand::rand_hex,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -17,8 +19,7 @@ impl TempDir {
                     time = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs,
                                                               true /* use_z */),
                     pid = std::process::id(),
-                    rand = rand::random::<[u8; 8]>()
-                                .encode_hex::<String>()));
+                    rand = rand_hex(8)));
 
         tracing::debug!(temp_path = %temp_path.display(),
                         keep,

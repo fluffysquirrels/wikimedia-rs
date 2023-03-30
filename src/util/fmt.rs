@@ -25,7 +25,9 @@ pub struct TransferStats {
 #[derive(Clone, Copy)]
 pub struct Duration(pub StdDuration);
 
+#[allow(dead_code)] // Used in tests.
 const MS:     StdDuration = StdDuration::from_millis(1);
+#[allow(dead_code)] // Used in tests.
 const SECOND: StdDuration = StdDuration::from_secs(1);
 const MINUTE: StdDuration = StdDuration::from_secs(60);
 const HOUR:   StdDuration = StdDuration::from_secs(60 * 60);
@@ -171,7 +173,9 @@ impl Debug for Duration {
             write!(out, " {ms}ms")?;
         }
 
-        f.write_str(out.trim_start())?;
+        let out = out.trim_start();
+
+        f.pad(out)?;
 
         Ok(())
     }
@@ -179,7 +183,7 @@ impl Debug for Duration {
 
 impl Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{self:?}")
+        <Self as Debug>::fmt(self, f)
     }
 }
 
@@ -285,5 +289,12 @@ mod tests {
         println!("fails = {fails}\n\n");
 
         assert!(fails == 0);
+    }
+
+    #[test]
+    fn duration_padding() {
+        let dur = Duration(SECOND * 2);
+        assert_eq!(&*format!("{dur:>6}"), "    2s");
+        assert_eq!(&*format!("{dur:<6}"), "2s    ");
     }
 }

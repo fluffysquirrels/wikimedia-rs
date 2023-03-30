@@ -122,7 +122,7 @@ pub struct OpenSpecArgs {
 
     /// Maximum count of pages operate on. No limit if omitted.
     #[arg(long)]
-    pub count: Option<u64>,
+    pub limit: Option<u64>,
 
     #[clap(flatten)]
     pub file_name_regex: FileNameRegexArg,
@@ -260,7 +260,7 @@ impl TryFrom<(CommonArgs, OpenSpecArgs)> for local::OpenSpec {
         Ok(local::OpenSpec {
             compression: args.compression,
             source,
-            max_count: args.count,
+            limit: args.limit,
         })
     }
 }

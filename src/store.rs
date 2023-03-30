@@ -8,6 +8,7 @@ pub use chunk::{
     StorePageId,
 };
 
+use anyhow::Context;
 use crate::{
     dump::{
         self,
@@ -53,6 +54,21 @@ pub struct ImportResult {
 pub struct ImportChunkResult {
     pub chunk_meta: chunk::ChunkMeta,
     pub duration: Duration,
+}
+
+enum ImportEnd {
+    PageLimit,
+    Err(Error),
+}
+
+macro_rules! try_import {
+    ($val:expr) => {
+        match $val {
+            ::std::result::Result::Err(e) =>
+                return ::std::result::Result::Err(ImportEnd::Err(e.into())),
+            ::std::result::Result::Ok(v) => v,
+        }
+    }
 }
 
 impl Options {
@@ -110,11 +126,6 @@ impl Store {
             open_spec = job_files.open_spec().as_value(),
             "Starting import");
 
-        enum ImportEnd {
-            PageCountMax,
-            Err(Error),
-        }
-
         let index = &self.index;
 
         let chunk_bytes_total = AtomicU64::new(0);
@@ -136,37 +147,26 @@ impl Store {
                     pages_iter,
                     source_bytes_read,
                     uncompressed_bytes_read,
-                } = match file {
-                    Err(e) => return Err(ImportEnd::Err(e)),
-                    Ok(file) => file,
-                };
+                } = try_import!(file);
 
                 let mut pages = pages_iter.peekable();
 
                 while pages.peek().is_some() {
-                    if let Some(max) = job_files.open_spec().max_count.as_ref().copied() {
-                        if pages_total.load(Ordering::SeqCst) > max {
-                            return Err(ImportEnd::PageCountMax);
+                    if let Some(limit) = job_files.open_spec().limit.as_ref().copied() {
+                        if pages_total.load(Ordering::SeqCst) > limit {
+                            return Err(ImportEnd::PageLimit);
                         }
                     }
 
                     let source_bytes_read_before = source_bytes_read.load(Ordering::SeqCst);
 
-                    let chunk_builder = match chunk_write_guard.chunk_builder() {
-                        Ok(b) => b,
-                        Err(e) => return Err(ImportEnd::Err(e)),
-                    };
+                    let chunk_builder = try_import!(chunk_write_guard.chunk_builder());
+                    let index_batch_builder = try_import!(index.import_batch_builder());
 
-                    let index_batch_builder = match index.import_batch_builder() {
-                        Ok(b) => b,
-                        Err(e) => return Err(ImportEnd::Err(e)),
-                    };
-
-                    let res = match Self::import_chunk(&file_spec, &mut pages, chunk_builder,
-                                                       index_batch_builder) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            let e = e.context(
+                    let res = try_import!(
+                        Self::import_chunk(&file_spec, &mut pages, chunk_builder,
+                                           index_batch_builder)
+                            .with_context(||
                                 format!("While importing a chunk from file {file_spec:?} \
                                          source_bytes_read={source_bytes_read:?} \
                                          uncompressed_bytes_read={uncompressed_bytes_read:?}",
@@ -174,18 +174,14 @@ impl Store {
                                             Bytes(source_bytes_read.load(Ordering::SeqCst)),
                                         uncompressed_bytes_read =
                                             Bytes(uncompressed_bytes_read.load(
-                                                Ordering::SeqCst))));
-                            return Err(ImportEnd::Err(e));
-                        },
-                    };
+                                                Ordering::SeqCst)))));
 
                     // fetch_add counters.
                     let chunk_bytes_total_curr =
                         chunk_bytes_total.fetch_add(res.chunk_meta.bytes_len.0, Ordering::SeqCst);
-                    let pages_total_curr =
-                        pages_total.fetch_add(res.chunk_meta.pages_len, Ordering::SeqCst);
-                    let chunks_len_curr =
-                        chunks_len.fetch_add(1, Ordering::SeqCst);
+                    let pages_total_curr = pages_total.fetch_add(res.chunk_meta.pages_len,
+                                                                 Ordering::SeqCst);
+                    let chunks_len_curr = chunks_len.fetch_add(1, Ordering::SeqCst);
                     let source_bytes_read_after = source_bytes_read.load(Ordering::SeqCst);
                     let source_bytes_read_diff =
                         source_bytes_read_after - source_bytes_read_before;
@@ -216,18 +212,14 @@ impl Store {
                             // We succeded in the update, so we are
                             // the thread to print the current
                             // progress.
-                            if let Err(e) =
-                                Self::print_import_progress(start,
-                                                            &file_spec,
-                                                            chunk_bytes_total_curr,
-                                                            pages_total_curr,
-                                                            chunks_len_curr,
-                                                            total_source_bytes.0,
-                                                            total_source_bytes_read_curr,
-                                                            source_bytes_read_diff) {
-
-                                return Err(ImportEnd::Err(e));
-                            }
+                            try_import!(Self::print_import_progress(start,
+                                                                    &file_spec,
+                                                                    chunk_bytes_total_curr,
+                                                                    pages_total_curr,
+                                                                    chunks_len_curr,
+                                                                    total_source_bytes.0,
+                                                                    total_source_bytes_read_curr,
+                                                                    source_bytes_read_diff));
                         }
                     } // End check whether we should print progress.
                 }; // Loop while there are more pages in the import file.
@@ -349,7 +341,7 @@ impl Store {
                   {eta}",
                  now = fmt::chrono_time(now),
                  remaining_str = match est_remaining_duration {
-                     Some(dur) => format!("   remaining: {:.2?}", dur.0),
+                     Some(dur) => format!("   remaining: {dur:>16}"),
                      None => "".to_string(),
                  },
                  eta = match eta {

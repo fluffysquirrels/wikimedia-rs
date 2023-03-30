@@ -1,13 +1,18 @@
-use anyhow::{bail, format_err};
+use anyhow::{bail, Context, format_err};
 use crate::{
     args::CommonArgs,
     capnp::wikimedia_capnp as wmc,
     dump,
     store::{self, StorePageId},
     Result,
+    slug,
+    util::rand::rand_hex,
     wikitext,
 };
-use std::io::Write;
+use std::{
+    fs,
+    io::Write,
+};
 
 /// Get a page from a chunk.
 #[derive(clap::Args, Clone, Debug)]
@@ -35,7 +40,11 @@ pub struct Args {
     out: OutputType,
 
     #[arg(long)]
-    max_count: Option<u64>,
+    limit: Option<u64>,
+
+    /// Open the output HTML file in your browser. Requires `--out html`.
+    #[arg(long, default_value_t = false)]
+    open: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
@@ -44,12 +53,10 @@ enum OutputType {
     Json,
     JsonWithBody,
 
-    /// Copy the page's title and IDs to an in-memory dump::Page object,
-    /// then discard it without outputting anything.
+    /// Copy the page title and IDs to an in-memory object, then discard it without outputting anything.
     LoadDiscard,
 
-    /// Copy the page's IDs to an in-memory object,
-    /// then discard it without outputting anything.
+    /// Copy the page IDs to an in-memory object, then discard it without outputting anything.
     LoadIdDiscard,
 
     None,
@@ -57,7 +64,9 @@ enum OutputType {
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = store::Options::from_common_args(&args.common).build()?;
+    if args.open && args.out != OutputType::Html {
+        bail!("If argument `--open` is passed then argument `--out` must equal `html`.");
+    }
 
     let arg_groups_given: Vec<&'static str> = [
             args.store_page_id.as_ref().map(|_| "--store-page-id"),
@@ -71,6 +80,8 @@ pub async fn main(args: Args) -> Result<()> {
                You must pass only one of these arguments.",
               opts = arg_groups_given.join(", "));
     }
+
+    let store = store::Options::from_common_args(&args.common).build()?;
 
     let mut count: u64 = 0;
 
@@ -101,7 +112,7 @@ pub async fn main(args: Args) -> Result<()> {
                 output_page(&args, page, store_id).await?;
                 count += 1;
 
-                if args.max_count.is_some() && count >= args.max_count.unwrap() {
+                if args.limit.is_some() && count >= args.limit.unwrap() {
                     break;
                 }
             }
@@ -122,7 +133,7 @@ pub async fn main(args: Args) -> Result<()> {
                     output_page(&args, page, store_id).await?;
                     count += 1;
 
-                    if args.max_count.is_some() && count >= args.max_count.unwrap() {
+                    if args.limit.is_some() && count >= args.limit.unwrap() {
                         break 'by_chunk;
                     }
                 }
@@ -174,7 +185,39 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePa
         OutputType::Html => {
             let page = dump::Page::try_from(&page)?;
             let html = wikitext::convert_page_to_html(&args.common, &page, Some(store_id)).await?;
-            std::io::stdout().write_all(&*html)?;
+
+            if args.open {
+                // Write page HTML to a temp file.
+                let slug = slug::title_to_slug(&*page.title);
+
+                // Add rand a random value to output file names to
+                // avoid overwriting data from previous runs.
+                let rand = rand_hex(8);
+
+                let path = args.common.out_dir().join(
+                    format!("temp/pages/{slug}_{rand}.html"));
+                let parent = path.parent().expect("path has parent by construction");
+
+                // Closure to add error context.
+                (|| -> Result<()> {
+                    println!("Write output HTML to {path} . . .", path = path.display());
+
+                    fs::create_dir_all(parent)?;
+                    fs::write(&*path, html)?;
+
+                    // Open the html file using the operating system's default method,
+                    // should use a web browser.
+                    open::that(&*path)
+                        .with_context(|| "opening the HTML file in your browser")?;
+
+                    Ok(())
+                })().with_context(|| format!("saving HTML to file and opening it in a browser \
+                                              file_path={path}",
+                                             path = (&*path).display()))?;
+            } else {
+                // args.open == false
+                std::io::stdout().write_all(&*html)?;
+            }
         }
     }
 

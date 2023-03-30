@@ -60,7 +60,7 @@ pub struct OpenJobFile {
 #[derive(Clone, Debug, Valuable)]
 pub struct OpenSpec {
     pub source: SourceSpec,
-    pub max_count: Option<u64>,
+    pub limit: Option<u64>,
     pub compression: Compression,
 }
 
@@ -233,9 +233,9 @@ impl JobFiles {
             })
             .boxed_send();
 
-        let pages = match self.open_spec.max_count {
+        let pages = match self.open_spec.limit {
             None => pages,
-            Some(count) => pages.take(usize::try_from(count)?).boxed_send(),
+            Some(limit) => pages.take(usize::try_from(limit)?).boxed_send(),
         };
 
         Ok(pages)

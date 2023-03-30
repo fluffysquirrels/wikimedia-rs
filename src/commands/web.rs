@@ -390,7 +390,6 @@ fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
         let wikitext_html = wikitext::convert_page_to_html(&common_args, &page,
                                                            Some(store_page_id)).await?;
         let slug = slug::title_to_slug(&*page.title);
-        let wikitext_html = String::from_utf8_lossy(&*wikitext_html).to_string();
         let html = PageHtml {
             title: page.title,
 

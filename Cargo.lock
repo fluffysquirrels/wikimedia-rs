@@ -3484,6 +3484,7 @@ dependencies = [
  "indicatif",
  "iterator-ext",
  "lz4_flex",
+ "maplit",
  "memmap2",
  "mime",
  "natord",

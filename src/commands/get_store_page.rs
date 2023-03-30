@@ -203,7 +203,7 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePa
                     println!("\nWrite output HTML to {path} . . .\n", path = path.display());
 
                     fs::create_dir_all(parent)?;
-                    fs::write(&*path, html)?;
+                    fs::write(&*path, html.as_bytes())?;
 
                     // Open the html file using the operating system's default method,
                     // should use a web browser.
@@ -216,7 +216,7 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>, store_id: StorePa
                                              path = (&*path).display()))?;
             } else {
                 // args.open == false
-                std::io::stdout().write_all(&*html)?;
+                std::io::stdout().write_all(html.as_bytes())?;
             }
         }
     }

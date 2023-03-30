@@ -129,6 +129,7 @@ $body$
             .add_tag_attributes("h4", &["id"])
             .add_tag_attributes("h5", &["id"])
             .add_tag_attributes("h6", &["id"])
+            .add_tag_attributes("li", &["id"])
             .clean(&*html)
             .to_string();
 

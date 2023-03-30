@@ -18,9 +18,6 @@
 * Support `cargo install` wmdl / wikimedia-downloader?
     * Can't go on crates.io with git dependencies.  
       (waiting for tracing-bunyan-formatter to be merged).
-    * Out dir
-        * Possible: On first use prompt for default out path and save it to a config file
-        * This is done: Or fall back to user data dir
     * Mirror selection?
     * Build without capnp.
         * Use build.rs?
@@ -46,12 +43,31 @@
         * capnp, capnp-rust on path
         * pandoc on path
     * Quick start from zero to web.
+    * Default out dir.
     * bin scripts
     * Mirror selection and rationale
     * Top level module documentation
     * Platforms tested
     * Architecture (basics of crate and module layout)
-    * out-dir layout
+    * out-dir layout:
+
+      ```
+      out/dumps
+      out/dumps/enwiki
+      out/dumps/enwiki/20230320
+      out/dumps/enwiki/20230320/articlesmultistreamdump
+      out/http_cache
+      out/store
+      out/store/chunks
+      out/store/chunks/articles-*.cap
+      out/store/chunks/lock
+      out/store/chunks/temp
+      out/store/index
+      out/store/index/index.db
+      out/store/index/index.db-shm
+      out/store/index/index.db-wal
+      ```
+
     * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
     ```
     CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
@@ -78,9 +94,6 @@
     * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
     * Error handling
     * category by title should redirect to category url
-* cli `get-store-page` by wikimedia ID or title.
-* cli `get-store-page` --out html --open : writes file to
-  out/temp/{slug}.html, opens in your browser.
 * Categories
     * web
         * web: add examples to wmd web index /

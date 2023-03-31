@@ -14,21 +14,29 @@
 
 ## Must do before publishing
 
-* Rename bin name to wmdl (wmd is taken on crates.io)
-* Support `cargo install` wmdl / wikimedia-downloader?
+* `bin/publish` script: force clean git status, generate capnp rust,
+  run tests, publish to crates.io.
+* Split source into several crates
+    * dump + api
+    * store
+    * CLI
+    * Not now: web
+* Document bin name (`wmd`), CLI tool crate name (`wikimedia-downloader`),
+  crate name (`wikimedia`), repo name (`wikimedia-rs`)
+* Support `import-dump` with no `--dump`, `--version`, `--job`?
+* Publish to crates.io.
+* Support `cargo install` wikimedia-downloader
     * Can't go on crates.io with git dependencies.  
       (waiting for tracing-bunyan-formatter to be merged).
     * Mirror selection?
     * Build without capnp.
-        * Use build.rs?
-        * Commit generated capnp rust files?
-        * Put generated capnp rust files in crates.io archive?
+        * This: commit generated capnp rust files
+        * No: Use build.rs? (Would still need capnpc built or installed, yuck)
+        * No: Put generated capnp rust files in crates.io archive
+            * A bit weird / suspicious having different source in published crate vs repo
+            * Different workflow for cargo install vs git clone && cargo run
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
 * wikitext to HTML
-    * remove active content (e.g. JavaScript)
-        * https://docs.rs/ammonia/3.3.0/ammonia/
-    * Did I fix this already? Internal links to headings are broken. They're rewritten like  
-      `http://localhost:8089/enwiki/page/by-title/#Upright`
     * Test: Batch render all pages.
         * pandoc error during rendering for this page (from dump enwiki/20230301/articlesdump):
           `wmd get-store-page --out html --mediawiki-id 62585868`
@@ -131,10 +139,6 @@
     * https://crates.io/crates/android-ndk
     * https://crates.io/crates/catch_panic
     * For completeness: https://docs.rs/rust-jni/latest/rust_jni/
-* Split into crates:
-    * dump + api
-    * store
-    * CLI (and maybe web?)
 * Maybe: create or document symlinks like I have them
     * out/version -> dumps/enwiki/20230301/
     * out/job -> version/articlesdump/
@@ -444,6 +448,7 @@
     * EventStreams
         * https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams
         * https://docs.rs/eventstreams/latest/eventstreams/
+            * Early POC.
         * `curl -s -H 'Accept: application/json' \
                https://stream.wikimedia.org/v2/stream/recentchange | jq .`
 * Wikimedia tools

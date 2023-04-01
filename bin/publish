@@ -8,7 +8,7 @@ cd "${repo_dir}"
 WMD_GENERATE_SOURCE_FORCE=true bin/generate-source
 
 # Check for git changes.
-echo "Checking git status"
+echo -e "\nChecking git status\n"
 GIT_STATUS_LINES="$(git status --porcelain=v1 | tee /dev/stderr | wc -l)"
 if [ "${GIT_STATUS_LINES}" -ne "0" ]; then
     cat <<EOF
@@ -23,7 +23,7 @@ fi
 PKG_VERSION="$(tomato --format raw get 'workspace.package.version' Cargo.toml)"
 
 echo "PKG_VERSION = ${PKG_VERSION} (from workspace Cargo.toml)"
-echo "\nChecking git tag"
+echo -e "\nChecking git tag\n"
 
 TAG_NAME="v${PKG_VERSION}"
 TAG_STATUS_EXPECTED="$(git rev-parse HEAD)"$'\t'"refs/tags/${TAG_NAME}"
@@ -89,6 +89,7 @@ git status OK
 Running builds to check the code
 EOF
 
+export RUSTFLAGS="-D warning"
 
 bin/build
 bin/test

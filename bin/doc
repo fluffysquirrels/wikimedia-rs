@@ -8,9 +8,8 @@ cd "${crate_dir}"
 "${crate_dir}/bin/generate-source"
 
 cargo doc \
+          --workspace \
           --package capnp \
-          --package flatbuffers \
-          --package wikimedia-downloader \
           --document-private-items \
           --no-deps \
           --open

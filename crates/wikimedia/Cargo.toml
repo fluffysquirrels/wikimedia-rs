@@ -1,0 +1,55 @@
+[package]
+name = "wikimedia"
+description = "Download and read wikimedia data."
+
+authors.workspace = true
+documentation.workspace = true
+edition.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+ammonia.workspace = true
+anyhow.workspace = true
+bzip2.workspace = true
+chrono.workspace = true
+clap.workspace = true
+crossbeam-utils.workspace = true
+derive_builder.workspace = true
+encoding_rs.workspace = true
+fd-lock.workspace = true
+futures.workspace = true
+hex.workspace = true
+html-escape.workspace = true
+http-cache-reqwest.workspace = true
+human_format.workspace = true
+indicatif.workspace = true
+iterator-ext.workspace = true
+lz4_flex.workspace = true
+maplit.workspace = true
+mime.workspace = true
+natord.workspace = true
+once_cell.workspace = true
+platform-dirs.workspace = true
+progress-streams.workspace = true
+quick-xml.workspace = true
+rand.workspace = true
+rayon.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+reqwest-middleware.workspace = true
+scraper.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-bunyan-formatter.workspace = true
+tracing-subscriber.workspace = true
+valuable.workspace = true
+valuable-serde.workspace = true

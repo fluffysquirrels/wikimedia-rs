@@ -1,25 +1,28 @@
-[package]
-name = "wikimedia-downloader"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/fluffysquirrels/wikimedia-downloader"
-description = "Download and view data from wikimedia sites."
-
-include = [
-    ".cargo/config.toml",
-    "capnp/**",
-    "Cargo.lock",
-    "Cargo.toml",
-    "src/**/*.rs",
-    "web-templates/**",
+[workspace]
+members = [
+    "crates/wikimedia",
+    "crates/wikimedia-store",
+    "crates/wmd",
 ]
 
-[[bin]]
-name = "wmd"
-path = "src/main.rs"
+[workspace.package]
+authors = ["Alex Helfet <alex.helfet@gmail.com>"]
+description = "Crate and tools to download and view data from Wikimedia."
+documentation = "https://docs.rs/wikimedia/latest"
+edition = "2021"
+keywords = ["mediawiki", "wikimedia", "wikipedia"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/fluffysquirrels/wikimedia-rs"
+version = "0.1.0"
 
-[dependencies]
+[workspace.dependencies]
+
+# Crates in the workspace
+wikimedia = { version = "0.1.0", path = "crates/wikimedia" }
+wikimedia-store = { version = "0.1.0", path = "crates/wikimedia-store" }
+wmd = { version = "0.1.0", path = "crates/wmd" }
+
 ammonia = "3.3.0"
 anyhow = "1.0"
 askama = { version = "0.12.0", features = ["with-axum"] }
@@ -31,6 +34,7 @@ chrono = "0.4.23"
 clap = { version = "4.1.8", features = ["derive", "env", "string"] }
 clap_complete = "4.1.4"
 crossbeam-utils = "0.8.15"
+derive_builder = "0.12.0"
 encoding_rs = "0.8"
 fd-lock = "3.0.10"
 futures = "0.3.27"
@@ -68,13 +72,10 @@ tokio-util = { version = "0.7.7", features = ["io"] }
 tower = { version = "0.4.13", features = [] }
 tower-http = { version = "0.4.0", features = ["catch-panic", "sensitive-headers", "trace"] }
 tracing = { version = "0.1.37", features = ["valuable"] }
-tracing-bunyan-formatter = { version = "0.3.6", features = ["valuable"] }
+tracing-bunyan-formatter = { version = "0.3.7", features = ["valuable"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json", "time"] }
 valuable = { version = "0.1.0", features = ["derive"] }
 valuable-serde = "0.1.0"
 
 [profile.release]
 # strip = true
-
-[patch.crates-io]
-tracing-bunyan-formatter = { git = "https://github.com/fluffysquirrels/tracing-bunyan-formatter", branch = "valuable" }

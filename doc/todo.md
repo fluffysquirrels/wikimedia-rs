@@ -14,13 +14,30 @@
 
 ## Must do before publishing
 
+* Document that import --limit is approximate.
 * `bin/publish` script: force clean git status, generate capnp rust,
   run tests, publish to crates.io.
 * Split source into several crates
-    * dump + api
-    * store
-    * CLI
-    * Not now: web
+    * Remove nightly `#![feature()]` use that isn't required.
+    * Trim dependencies.
+      ```
+      rg '^use [^;:]*' --multiline-dotall --multiline -o --no-heading \
+      | rg -v 'use (crate|std)' \
+      | sed -Ee 's#^(crates/[-a-z]+)/[^:]+use (.+)$#\1:\2#' \
+      | mlr --hi --c2p --ifs ':' sort -f 1,2 then uniq -a
+      ```
+
+      ```
+      rg '(?<=[ \(<])[a-z0-9_]+(?=::)' --multiline -o --no-heading \
+        --case-sensitive --glob \*.rs \
+      | sed -Ee 's#^(crates/[-a-z]+)/[^:]+:(.+)$#\1:\2#' \
+      | mlr --c2p --ifs : --hi \
+          rename 1,crate,2,ref \
+          then sort -f crate,ref \
+          then uniq -a
+      ```
+    * Document crate split in the README.md
+* MirrorUrl newtype
 * Document bin name (`wmd`), CLI tool crate name (`wikimedia-downloader`),
   crate name (`wikimedia`), repo name (`wikimedia-rs`)
 * Support `import-dump` with no `--dump`, `--version`, `--job`?
@@ -48,8 +65,10 @@
     "id": 35936988,}}`
 * Documentation:
     * Pre-requisites for build and run.
-        * capnp, capnp-rust on path
         * pandoc on path
+    * Pre-requisites to rebuild capnp. Describe why `capnp/generated` is checked in.
+        * capnp, capnp-rust on path
+        * Nice error messages when these are missing
     * Quick start from zero to web.
     * Default out dir.
     * bin scripts

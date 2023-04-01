@@ -788,6 +788,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_builder"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d67778784b508018359cbc8696edb3db78160bab2c2a28ba7f56ef6932997f8"
+dependencies = [
+ "derive_builder_macro",
+]
+
+[[package]]
+name = "derive_builder_core"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c11bdc11a0c47bc7d37d582b5285da6849c96681023680b906673c5707af7b0f"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "derive_builder_macro"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebcda35c7a396850a55ffeac740804b40ffec779b98fffbb1738f4033f0ee79e"
+dependencies = [
+ "derive_builder_core",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3121,8 +3152,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-bunyan-formatter"
-version = "0.3.6"
-source = "git+https://github.com/fluffysquirrels/tracing-bunyan-formatter?branch=valuable#2d1f9b87006b050005dd7d953ef19e5917500da6"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25a348912d4e90923cb93343691d3be97e3409607363706c400fc935bb032fb0"
 dependencies = [
  "ahash 0.8.3",
  "gethostname",
@@ -3460,7 +3492,54 @@ dependencies = [
 ]
 
 [[package]]
-name = "wikimedia-downloader"
+name = "wikimedia"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "anyhow",
+ "bzip2",
+ "chrono",
+ "clap",
+ "crossbeam-utils",
+ "derive_builder",
+ "encoding_rs",
+ "fd-lock",
+ "futures",
+ "hex",
+ "html-escape",
+ "http-cache-reqwest",
+ "human_format",
+ "indicatif",
+ "iterator-ext",
+ "lz4_flex",
+ "maplit",
+ "mime",
+ "natord",
+ "once_cell",
+ "platform-dirs",
+ "progress-streams",
+ "quick-xml",
+ "rand 0.8.5",
+ "rayon",
+ "regex",
+ "reqwest",
+ "reqwest-middleware",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-subscriber",
+ "valuable",
+ "valuable-serde",
+]
+
+[[package]]
+name = "wikimedia-store"
 version = "0.1.0"
 dependencies = [
  "ammonia",
@@ -3474,6 +3553,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "crossbeam-utils",
+ "derive_builder",
  "encoding_rs",
  "fd-lock",
  "futures",
@@ -3515,6 +3595,7 @@ dependencies = [
  "tracing-subscriber",
  "valuable",
  "valuable-serde",
+ "wikimedia",
 ]
 
 [[package]]
@@ -3636,4 +3717,64 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "wmd"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
+ "anyhow",
+ "askama",
+ "askama_axum",
+ "axum",
+ "bzip2",
+ "capnp",
+ "chrono",
+ "clap",
+ "clap_complete",
+ "crossbeam-utils",
+ "encoding_rs",
+ "fd-lock",
+ "futures",
+ "hex",
+ "html-escape",
+ "http-cache-reqwest",
+ "human_format",
+ "indicatif",
+ "iterator-ext",
+ "lz4_flex",
+ "maplit",
+ "memmap2",
+ "mime",
+ "natord",
+ "once_cell",
+ "open",
+ "platform-dirs",
+ "progress-streams",
+ "quick-xml",
+ "rand 0.8.5",
+ "rayon",
+ "regex",
+ "reqwest",
+ "reqwest-middleware",
+ "rusqlite",
+ "scraper",
+ "sea-query",
+ "sea-query-rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-subscriber",
+ "valuable",
+ "valuable-serde",
+ "wikimedia",
+ "wikimedia-store",
 ]

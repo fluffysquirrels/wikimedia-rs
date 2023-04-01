@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+set -euUx -o pipefail;
+
+readonly repo_dir="$( cd $(dirname ${BASH_SOURCE})/..; pwd )";
+
+cd "${repo_dir}"
+
+WMD_GENERATE_SOURCE_FORCE=true bin/generate-source
+
+# Check for git changes.
+echo "Checking git status"
+GIT_STATUS_LINES="$(git status --porcelain=v1 | tee /dev/stderr | wc -l)"
+if [ "${GIT_STATUS_LINES}" -ne "0" ]; then
+    cat <<EOF
+
+Error: `git status` shows changes in the local worktree or git index.
+Commit or stash your changes.
+
+EOF
+    exit 1
+fi
+
+PKG_VERSION="$(tomato --format raw get 'workspace.package.version' Cargo.toml)"
+
+echo "PKG_VERSION = ${PKG_VERSION} (from workspace Cargo.toml)"
+echo "\nChecking git tag"
+
+TAG_NAME="v${PKG_VERSION}"
+TAG_STATUS_EXPECTED="refs/tags/${TAG_NAME}\t$(git rev-parse HEAD)"
+TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}")"
+TAG_STATUS_LINES="$(echo "${TAG_STATUS}" | tee /dev/stderr | wc -l)"
+
+# Check git tag exists for current version
+if [ "${TAG_STATUS_LINES}" -ne "1" ]; then
+    cat <<EOF
+
+Error: No git tag `${TAG_NAME}` found for current package version.
+
+Try creating a tag with `git tag ${TAG_NAME}`.
+
+EOF
+    exit 1
+fi
+
+# Check git tag commit is current HEAD commit
+if [ "${TAG_STATUS_EXPECTED}" -ne "${TAG_STATUS}" ]; then
+    cat <<EOF
+
+Error: Tag commit hash is wrong.
+
+The checked out commit is not the tagged commit.
+Either check out the tag or update the workspace version and create a new tag.
+
+Expected: ${TAG_STATUS_EXPECTED} (based on current HEAD and package version)
+Local:    ${TAG_STATUS} (tag in local repo)
+
+EOF
+    exit 1
+fi
+
+echo "\nChecking git remote origin"
+
+TAG_ORIGIN_STATUS="$(git ls-remote origin --tags "${TAG_NAME}")"
+TAG_ORIGIN_STATUS_LINES="$(echo "${TAG_ORIGIN_STATUS}" | tee /dev/stderr | wc -l)"
+
+# Check git tag is on the remote 'origin'
+if [ "${TAG_ORIGIN_STATUS_LINES}" -ne "1" ]; then
+    cat <<EOF
+
+Error: git tag `${TAG_NAME}` not found on remote `origin`.
+
+Try pushing the tag with `git push origin tag ${TAG_NAME}`.
+
+EOF
+    exit 1
+fi
+
+# Check git tag is correct on the remote 'origin'.
+if [ "${TAG_ORIGIN_STATUS}" -ne "${TAG_STATUS}" ]; then
+    cat <<EOF
+
+Error: Remote `origin`'s tag commit hash is wrong.
+
+The local tag does not match the remote tag.
+Either force update the local or remote tag.
+
+Expected: ${TAG_STATUS_EXPECTED}    (based on current HEAD and package version)
+Local:    ${TAG_STATUS}    (tag in local repo)
+origin:   ${TAG_ORIGIN_STATUS}    (tag in remote repo)
+
+EOF
+    exit 1
+fi
+
+echo "\ngit status OK"
+
+echo "\nRunning builds to check the code."
+
+bin/build
+bin/test
+bin/doc

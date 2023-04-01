@@ -68,11 +68,18 @@
   "revision": {
     "id": 35936988,}}`
 * Documentation:
-    * Pre-requisites for build and run.
+    * Pre-requisites for everything:
+        * bash, unix environment
+        * rustup
+    * Pre-requisites for build and run scripts
         * pandoc on path
-    * Pre-requisites to rebuild capnp. Describe why `capnp/generated` is checked in.
+    * Pre-requisites to rebuild capnp with bin/generate-source.  
+      Describe why `capnp/generated` is checked in.
         * capnp, capnp-rust on path
-        * Nice error messages when these are missing
+        * TODO: Nice error messages when these are missing
+    * Pre-requisites for `bin/publish`
+        * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
+    * `doc/publish.md` instructions
     * Quick start from zero to web.
     * Default out dir.
     * bin scripts

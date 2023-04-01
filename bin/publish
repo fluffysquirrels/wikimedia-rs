@@ -83,9 +83,12 @@ EOF
     exit 1
 fi
 
-echo "\ngit status OK"
+cat <<EOF
+git status OK
 
-echo "\nRunning builds to check the code."
+Running builds to check the code
+EOF
+
 
 bin/build
 bin/test

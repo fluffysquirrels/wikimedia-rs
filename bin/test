@@ -7,4 +7,4 @@ cd "${repo_dir}"
 
 bin/build
 
-cargo test --release --workspace --all-targets
+cargo test --release --workspace --all-targets --locked

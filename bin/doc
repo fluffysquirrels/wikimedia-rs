@@ -12,4 +12,5 @@ cargo doc \
           --package capnp \
           --document-private-items \
           --no-deps \
-          --open
+          --open \
+          --locked

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 set -eu -o pipefail
 
-readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
+readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
-"${crate_dir}/bin/build"
+cd "${repo_dir}"
 
-(
-    cd "${crate_dir}"
-    cargo test --release --workspace --all-targets
-)
+bin/build
+
+cargo test --release --workspace --all-targets

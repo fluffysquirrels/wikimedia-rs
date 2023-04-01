@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -eu -o pipefail
 
-readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
+readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
-cd "${crate_dir}"
+cd "${repo_dir}"
 
 rm -rf target/completion.*
 

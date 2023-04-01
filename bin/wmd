@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -eu -o pipefail
 
-readonly crate_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
+readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
-"${crate_dir}/bin/build"
-"${crate_dir}/target/release/wmd" "$@"
+# Don't change directories so `wmd` can read files correctly with relative paths.
+
+"${repo_dir}/bin/build"
+"${repo_dir}/target/release/wmd" "$@"

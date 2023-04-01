@@ -7,8 +7,8 @@ elif test -n "$ZSH_NAME" ; then script=${(%):-%x}
 else script=$0
 fi
 
-crate_dir="$( cd -- $(dirname "${script}")/..; pwd )";
+readonly repo_dir="$( cd $(dirname ${BASH_SOURCE})/..; pwd )"
 
 export RUST_LOG='wmd=debug,tower_http::trace::on_response=debug,info'
 export WMD_MIRROR_URL='https://ftp.acc.umu.se/mirror/wikimedia.org/dumps'
-export WMD_OUT_DIR="${crate_dir}/out"
+export WMD_OUT_DIR="${repo_dir}/out"

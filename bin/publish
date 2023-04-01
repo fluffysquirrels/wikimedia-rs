@@ -28,19 +28,6 @@ echo "\nChecking git tag"
 TAG_NAME="v${PKG_VERSION}"
 TAG_STATUS_EXPECTED="$(git rev-parse HEAD)"$'\t'"refs/tags/${TAG_NAME}"
 TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}")"
-TAG_STATUS_LINES="$(echo -n "${TAG_STATUS}" | tee /dev/stderr | wc -l)"
-
-# Check git tag exists for current version
-if [ "${TAG_STATUS_LINES}" -ne "1" ]; then
-    cat <<EOF
-
-Error: No git tag '${TAG_NAME}' found for current package version.
-
-Try creating a tag with 'git tag ${TAG_NAME}'.
-
-EOF
-    exit 1
-fi
 
 # Check git tag commit is current HEAD commit
 if [ "${TAG_STATUS_EXPECTED}" != "${TAG_STATUS}" ]; then

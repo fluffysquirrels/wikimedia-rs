@@ -45,7 +45,11 @@ EOF
     exit 1
 fi
 
-echo "\nChecking git remote origin"
+cat <<EOF
+Local git tag OK
+
+Checking git remote 'origin'
+EOF
 
 TAG_ORIGIN_STATUS="$(git ls-remote origin --tags "${TAG_NAME}")"
 TAG_ORIGIN_STATUS_LINES="$(echo "${TAG_ORIGIN_STATUS}" | tee /dev/stderr | wc -l)"

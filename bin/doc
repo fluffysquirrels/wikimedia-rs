@@ -7,10 +7,13 @@ cd "${repo_dir}"
 
 bin/generate-source
 
+# Use `--release` so we re-use artifacts from standard builds
+
 cargo doc \
           --workspace \
           --package capnp \
           --document-private-items \
           --no-deps \
           --open \
-          --locked
+          --locked \
+          --release

@@ -7,4 +7,6 @@ cd "${repo_dir}"
 
 bin/build
 
+# Use `--release` so we re-use artifacts from standard builds
+
 cargo test --release --workspace --all-targets --locked

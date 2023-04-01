@@ -7,6 +7,12 @@ cd "${repo_dir}"
 
 bin/generate-source
 
+if [ "${WMD_DOC_OPEN_FORCE-true}" = "true" ]; then
+    OPEN_ARG="--open"
+else
+    OPEN_ARG=""
+fi
+
 # Use `--release` so we re-use artifacts from standard builds
 
 cargo doc \
@@ -14,6 +20,6 @@ cargo doc \
           --package capnp \
           --document-private-items \
           --no-deps \
-          --open \
           --locked \
-          --release
+          --release \
+          ${OPEN_ARG}

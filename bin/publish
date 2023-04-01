@@ -89,5 +89,5 @@ export CARGO_TARGET_DIR="target/publish"
 bin/build
 bin/test
 
-WMD_DOC_OPEN_FORCE="false"
+WMD_DOC_OPEN_FORCE="false" \
 bin/doc

@@ -35,7 +35,7 @@ pub struct CommonArgs {
     ///     For macOs this is `~/Library/Application Support`
     ///
     ///     See the `platform-dirs` documentation:
-    ///     <https://github.com/cjbassi/platform-dirs-rs/blob/b7a5a9ad4535aa4fb156bfeb9cf887dd2bd696a4/README.md#appdirs.
+    ///     <https://github.com/cjbassi/platform-dirs-rs/blob/b7a5a9ad4535aa4fb156bfeb9cf887dd2bd696a4/README.md#appdirs>.
     ///
     /// The dump files downloaded from wikimedia will be placed under the subdirectory `dumps`,
     /// for example:

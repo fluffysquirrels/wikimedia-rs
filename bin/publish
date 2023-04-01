@@ -28,7 +28,7 @@ echo "\nChecking git tag"
 TAG_NAME="v${PKG_VERSION}"
 TAG_STATUS_EXPECTED="$(git rev-parse HEAD)"$'\t'"refs/tags/${TAG_NAME}"
 TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}")"
-TAG_STATUS_LINES="$(echo "${TAG_STATUS}" | tee /dev/stderr | wc -l)"
+TAG_STATUS_LINES="$(echo -n "${TAG_STATUS}" | tee /dev/stderr | wc -l)"
 
 # Check git tag exists for current version
 if [ "${TAG_STATUS_LINES}" -ne "1" ]; then

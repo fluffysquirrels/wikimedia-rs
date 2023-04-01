@@ -27,7 +27,7 @@ echo -e "\nChecking git tag\n"
 
 TAG_NAME="v${PKG_VERSION}"
 TAG_STATUS_EXPECTED="$(git rev-parse HEAD)"$'\t'"refs/tags/${TAG_NAME}"
-TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}")"
+TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}" | tee /dev/stderr)"
 
 # Check git tag commit is current HEAD commit
 if [ "${TAG_STATUS_EXPECTED}" != "${TAG_STATUS}" ]; then
@@ -49,22 +49,10 @@ cat <<EOF
 Local git tag OK
 
 Checking git remote 'origin'
-EOF
-
-TAG_ORIGIN_STATUS="$(git ls-remote origin --tags "${TAG_NAME}")"
-TAG_ORIGIN_STATUS_LINES="$(echo "${TAG_ORIGIN_STATUS}" | tee /dev/stderr | wc -l)"
-
-# Check git tag is on the remote 'origin'
-if [ "${TAG_ORIGIN_STATUS_LINES}" -ne "1" ]; then
-    cat <<EOF
-
-Error: git tag '${TAG_NAME}' not found on remote 'origin'.
-
-Try pushing the tag with 'git push origin tag ${TAG_NAME}'.
 
 EOF
-    exit 1
-fi
+
+TAG_ORIGIN_STATUS="$(git ls-remote origin --tags "${TAG_NAME}" | tee /dev/stderr)"
 
 # Check git tag is correct on the remote 'origin'.
 if [ "${TAG_ORIGIN_STATUS}" != "${TAG_STATUS}" ]; then

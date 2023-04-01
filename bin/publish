@@ -75,9 +75,9 @@ Error: On remote 'origin' tag commit hash is wrong.
 The local tag does not match the remote tag.
 Either force update the local or remote tag.
 
-Expected: ${TAG_STATUS_EXPECTED}    (based on current HEAD and package version)
-Local:    ${TAG_STATUS}    (tag in local repo)
-origin:   ${TAG_ORIGIN_STATUS}    (tag in remote repo)
+Expected: ${TAG_STATUS_EXPECTED}   (based on current HEAD and package version)
+Local:    ${TAG_STATUS}   (tag in local repo)
+origin:   ${TAG_ORIGIN_STATUS}   (tag in remote repo)
 
 EOF
     exit 1

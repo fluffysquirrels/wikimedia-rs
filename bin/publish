@@ -36,7 +36,7 @@ if [ "${TAG_STATUS_EXPECTED}" != "${TAG_STATUS}" ]; then
 Error: Tag commit hash is wrong.
 
 The checked out commit is not the tagged commit.
-Either check out the tag or update the workspace version and create a new tag.
+Try checking out the tag, updating the tag, or updating the workspace version and creating a new tag.
 
 Expected: ${TAG_STATUS_EXPECTED} (based on current HEAD and package version)
 Local:    ${TAG_STATUS} (tag in local repo)

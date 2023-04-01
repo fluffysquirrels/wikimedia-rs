@@ -352,13 +352,14 @@ fn file_specs_from_job_dir(
                 if !dir_entry.file_type()?.is_file() {
                     return Ok(None);
                 }
-                macro_rules! file_re_prefix {
-                    () => { r#".*pages.*articles(-multistream)?[0-9]+\.xml-p[0-9]+p[0-9]+"# };
-                }
+
+                const FILE_RE_PREFIX: &'static str =
+                    r#".*pages.*articles(-multistream)?[0-9]+\.xml-p[0-9]+p[0-9]+"#;
+
                 let name_regex = match compression {
-                    Compression::Bzip2 => lazy_regex!(file_re_prefix!(), r#"\.bz2$"#),
-                    Compression::LZ4 => lazy_regex!(file_re_prefix!(), r#"\.lz4$"#),
-                    Compression::None => lazy_regex!(file_re_prefix!(), r#"$"#),
+                    Compression::Bzip2 => lazy_regex!(FILE_RE_PREFIX, r#"\.bz2$"#),
+                    Compression::LZ4 => lazy_regex!(FILE_RE_PREFIX, r#"\.lz4$"#),
+                    Compression::None => lazy_regex!(FILE_RE_PREFIX, r#"$"#),
                 };
                 let name = dir_entry.file_name().to_string_lossy().into_owned();
                 if name_regex.is_match(&*name)

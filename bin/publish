@@ -92,6 +92,7 @@ Running builds to check the code
 EOF
 
 export RUSTFLAGS="$(tomato get 'build.rustflags' .cargo/config.toml | tr '\n' ' ') -D warnings"
+export CARGO_TARGET_DIR="target/publish"
 
 bin/build
 bin/test

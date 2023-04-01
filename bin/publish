@@ -89,7 +89,7 @@ git status OK
 Running builds to check the code
 EOF
 
-export RUSTFLAGS="-D warning"
+export RUSTFLAGS="-D warnings"
 
 bin/build
 bin/test

@@ -1279,15 +1279,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "html-escape"
-version = "0.2.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d1ad449764d627e22bfd7cd5e8868264fc9236e07c752972b4080cd351cb476"
-dependencies = [
- "utf8-width",
-]
-
-[[package]]
 name = "html5ever"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3300,12 +3291,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
 
 [[package]]
-name = "utf8-width"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5190c9442dcdaf0ddd50f37420417d219ae5261bbf5db120d0f9bab996c9cba1"
-
-[[package]]
 name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3503,20 +3488,16 @@ dependencies = [
  "crossbeam-utils",
  "derive_builder",
  "encoding_rs",
- "fd-lock",
  "futures",
  "hex",
- "html-escape",
  "http-cache-reqwest",
  "human_format",
- "indicatif",
  "iterator-ext",
  "lz4_flex",
  "maplit",
  "mime",
  "natord",
  "once_cell",
- "platform-dirs",
  "progress-streams",
  "quick-xml",
  "rand 0.8.5",
@@ -3532,8 +3513,6 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
- "tracing-bunyan-formatter",
- "tracing-subscriber",
  "valuable",
  "valuable-serde",
 ]
@@ -3542,59 +3521,22 @@ dependencies = [
 name = "wikimedia-store"
 version = "0.1.0"
 dependencies = [
- "ammonia",
  "anyhow",
- "askama",
- "askama_axum",
- "axum",
- "bzip2",
  "capnp",
  "chrono",
- "clap",
- "clap_complete",
  "crossbeam-utils",
  "derive_builder",
- "encoding_rs",
  "fd-lock",
- "futures",
- "hex",
- "html-escape",
- "http-cache-reqwest",
- "human_format",
- "indicatif",
- "iterator-ext",
- "lz4_flex",
- "maplit",
  "memmap2",
- "mime",
- "natord",
  "once_cell",
- "open",
- "platform-dirs",
- "progress-streams",
- "quick-xml",
- "rand 0.8.5",
  "rayon",
  "regex",
- "reqwest",
- "reqwest-middleware",
  "rusqlite",
- "scraper",
  "sea-query",
  "sea-query-rusqlite",
  "serde",
- "serde_json",
- "sha1",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower",
- "tower-http",
  "tracing",
- "tracing-bunyan-formatter",
- "tracing-subscriber",
  "valuable",
- "valuable-serde",
  "wikimedia",
 ]
 
@@ -3723,48 +3665,21 @@ dependencies = [
 name = "wmd"
 version = "0.1.0"
 dependencies = [
- "ammonia",
  "anyhow",
  "askama",
  "askama_axum",
  "axum",
  "bzip2",
- "capnp",
- "chrono",
  "clap",
  "clap_complete",
- "crossbeam-utils",
- "encoding_rs",
- "fd-lock",
  "futures",
- "hex",
- "html-escape",
  "http-cache-reqwest",
- "human_format",
  "indicatif",
- "iterator-ext",
- "lz4_flex",
- "maplit",
- "memmap2",
- "mime",
- "natord",
  "once_cell",
  "open",
  "platform-dirs",
- "progress-streams",
- "quick-xml",
- "rand 0.8.5",
- "rayon",
- "regex",
- "reqwest",
- "reqwest-middleware",
- "rusqlite",
- "scraper",
- "sea-query",
- "sea-query-rusqlite",
  "serde",
  "serde_json",
- "sha1",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -3774,7 +3689,6 @@ dependencies = [
  "tracing-bunyan-formatter",
  "tracing-subscriber",
  "valuable",
- "valuable-serde",
  "wikimedia",
  "wikimedia-store",
 ]

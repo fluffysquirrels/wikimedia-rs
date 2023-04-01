@@ -20,21 +20,25 @@
 * Split source into several crates
     * Remove nightly `#![feature()]` use that isn't required.
     * Trim dependencies.
+        * Snippets:
+            * Print all unique uses by crate (e.g. ``use blah::`, `blah::`)
       ```
-      rg '^use [^;:]*' --multiline-dotall --multiline -o --no-heading \
-      | rg -v 'use (crate|std)' \
-      | sed -Ee 's#^(crates/[-a-z]+)/[^:]+use (.+)$#\1:\2#' \
-      | mlr --hi --c2p --ifs ':' sort -f 1,2 then uniq -a
+      (
+          rg '(?<=^use )[^;:]*' -o --no-heading \
+          && rg '(?<=[^A-Za-z0-9_\:])[a-z0-9_]+(?=::)' -o --no-heading \
+                 --case-sensitive --glob \*.rs
+      )   | sed -Ee 's#^(crates/[-a-z]+)/[^:]+:(.+)$#\1:\2#' \
+          | mlr --hi --c2p --ifs ':' \
+              rename 1,crate,2,ref \
+              then filter -e '$ref != "crate" && $ref != "std"' \
+              then sort -f crate,ref \
+              then uniq -a
       ```
-
+            * Print all dependencies with `blah.workspace = true` in child crates:
       ```
-      rg '(?<=[ \(<])[a-z0-9_]+(?=::)' --multiline -o --no-heading \
-        --case-sensitive --glob \*.rs \
-      | sed -Ee 's#^(crates/[-a-z]+)/[^:]+:(.+)$#\1:\2#' \
-      | mlr --c2p --ifs : --hi \
-          rename 1,crate,2,ref \
-          then sort -f crate,ref \
-          then uniq -a
+      rg '^[^\.]+\.workspace'  --glob Cargo.toml -o --no-heading --no-line-number \
+          --no-filename \
+          | sort -u
       ```
     * Document crate split in the README.md
 * MirrorUrl newtype

@@ -26,7 +26,7 @@ echo "PKG_VERSION = ${PKG_VERSION} (from workspace Cargo.toml)"
 echo "\nChecking git tag"
 
 TAG_NAME="v${PKG_VERSION}"
-TAG_STATUS_EXPECTED="refs/tags/${TAG_NAME}\t$(git rev-parse HEAD)"
+TAG_STATUS_EXPECTED="$(git rev-parse HEAD)"$'\t'"refs/tags/${TAG_NAME}"
 TAG_STATUS="$(git ls-remote . --tags "${TAG_NAME}")"
 TAG_STATUS_LINES="$(echo "${TAG_STATUS}" | tee /dev/stderr | wc -l)"
 

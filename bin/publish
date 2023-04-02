@@ -143,6 +143,13 @@ cargo metadata --format-version 1 --no-deps \
 )"
 
 for pkg in ${PUB_ORDER}; do
+    if [ "${pkg}" == "_" ]; then
+        # "_" is a dummy dependency to make sure crates show up when they do not depend
+        # on anything in the workspace and nothing in the workspace depends on them.
+        # Ignore it.
+        continue
+    fi
+
     cat <<EOF
 
 Publishing '${pkg}'

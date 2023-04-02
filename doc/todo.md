@@ -15,8 +15,8 @@
 ## Must do before publishing
 
 * Document that import --limit is approximate.
-* `bin/publish` script: force clean git status, generate capnp rust,
-  run tests, publish to crates.io.
+* `bin/publish` script: generate capnp rust, force clean git status,
+  run builds and tests, publish to crates.io.
 * Split source into several crates
     * Remove nightly `#![feature()]` use that isn't required.
     * Trim dependencies.
@@ -47,15 +47,7 @@
 * Support `import-dump` with no `--dump`, `--version`, `--job`?
 * Publish to crates.io.
 * Support `cargo install` wikimedia-downloader
-    * Can't go on crates.io with git dependencies.  
-      (waiting for tracing-bunyan-formatter to be merged).
     * Mirror selection?
-    * Build without capnp.
-        * This: commit generated capnp rust files
-        * No: Use build.rs? (Would still need capnpc built or installed, yuck)
-        * No: Put generated capnp rust files in crates.io archive
-            * A bit weird / suspicious having different source in published crate vs repo
-            * Different workflow for cargo install vs git clone && cargo run
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
 * wikitext to HTML
     * Test: Batch render all pages.

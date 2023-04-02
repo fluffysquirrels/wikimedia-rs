@@ -14,14 +14,14 @@ keywords = ["mediawiki", "wikimedia", "wikipedia"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/fluffysquirrels/wikimedia-rs"
-version = "0.1.0"
+version = "0.1.1"
 
 [workspace.dependencies]
 
 # Crates in the workspace
-wikimedia = { version = "0.1.0", path = "crates/wikimedia" }
-wikimedia-download = { version = "0.1.0", path = "crates/wikimedia-download" }
-wikimedia-store = { version = "0.1.0", path = "crates/wikimedia-store" }
+wikimedia = { version = "0.1.1", path = "crates/wikimedia" }
+wikimedia-download = { version = "0.1.1", path = "crates/wikimedia-download" }
+wikimedia-store = { version = "0.1.1", path = "crates/wikimedia-store" }
 
 ammonia = "3.3.0"
 anyhow = "1.0"

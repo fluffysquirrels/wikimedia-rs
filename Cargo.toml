@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "crates/wikimedia",
+    "crates/wikimedia-download",
     "crates/wikimedia-store",
-    "crates/wmd",
 ]
 
 [workspace.package]
@@ -20,8 +20,8 @@ version = "0.1.0"
 
 # Crates in the workspace
 wikimedia = { version = "0.1.0", path = "crates/wikimedia" }
+wikimedia-download = { version = "0.1.0", path = "crates/wikimedia-download" }
 wikimedia-store = { version = "0.1.0", path = "crates/wikimedia-store" }
-wmd = { version = "0.1.0", path = "crates/wmd" }
 
 ammonia = "3.3.0"
 anyhow = "1.0"

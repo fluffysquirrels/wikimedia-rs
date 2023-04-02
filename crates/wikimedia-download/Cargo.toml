@@ -1,5 +1,5 @@
 [package]
-name = "wmd"
+name = "wikimedia-download"
 description = "CLI tool to download and view wikimedia data."
 
 authors.workspace = true
@@ -10,6 +10,10 @@ license.workspace = true
 readme.workspace = true
 repository.workspace = true
 version.workspace = true
+
+[[bin]]
+name = "wmd"
+path = "src/main.rs"
 
 [dependencies]
 

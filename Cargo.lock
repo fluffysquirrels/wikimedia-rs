@@ -3550,6 +3550,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "wikimedia-download"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "askama",
+ "askama_axum",
+ "axum",
+ "bzip2",
+ "clap",
+ "clap_complete",
+ "futures",
+ "http-cache-reqwest",
+ "indicatif",
+ "once_cell",
+ "open",
+ "platform-dirs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-subscriber",
+ "valuable",
+ "wikimedia",
+ "wikimedia-store",
+]
+
+[[package]]
 name = "wikimedia-store"
 version = "0.1.0"
 dependencies = [
@@ -3700,36 +3732,4 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "wmd"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "askama",
- "askama_axum",
- "axum",
- "bzip2",
- "clap",
- "clap_complete",
- "futures",
- "http-cache-reqwest",
- "indicatif",
- "once_cell",
- "open",
- "platform-dirs",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tower",
- "tower-http",
- "tracing",
- "tracing-bunyan-formatter",
- "tracing-subscriber",
- "valuable",
- "wikimedia",
- "wikimedia-store",
 ]

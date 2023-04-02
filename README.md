@@ -54,7 +54,7 @@ To show help instructions for `wmd`'s subcommands:
 # Help for `wmd` and its list of subcommands
 wmd help
 
-# Help for the subcommand `download` use one of these:
+# For help for the subcommand `download` use one of these:
 wmd help download
 wmd download --help
 ```
@@ -160,7 +160,7 @@ This requires generating accessor code (currently in [`crates/wikimedia-store/ca
 from `.capnp` schema files (currently in [`crates/wikimedia-store/capnp/`][capnp-schema]).
 
 The accessor code is checked into the source code repository so the
-generator la tools do not need to be installed to build the code when
+generator tools do not need to be installed to build the code when
 using `cargo install` or the build scripts, but if the schema files
 are modified the build scripts will detect this and regenerate the
 accessor code automatically.

@@ -23,6 +23,31 @@ fi
 PKG_VERSION="$(tomato --format raw get 'workspace.package.version' Cargo.toml)"
 
 echo "PKG_VERSION = ${PKG_VERSION} (from workspace Cargo.toml)"
+
+# Check crate versions match workspace version
+WORKSPACE_CRATES="$(tomato --format json get workspace.dependencies Cargo.toml \
+                         | jq "to_entries[]
+                               | select((.value | objects | .path)
+                                        and (.value.path | test(\"^crates/\"))
+                                 )
+                               | { name: .key, path: .value.path, version: .value.version }
+                               | select(.version != \"${PKG_VERSION}\")
+                           " -M
+                        )"
+
+if [ -n "${WORKSPACE_CRATES}" ]; then
+    cat <<EOF
+
+These workspace crates have a different version from the workspace version:
+
+$(echo ${WORKSPACE_CRATES} | sed -Ee 's/^/    /')
+
+Try updating the workspace crate versions with \`PKG_VERSION="${PKG_VERSION}" bin/set-versions\`.
+
+EOF
+    exit 1
+fi
+
 echo -e "\nChecking git tag\n"
 
 TAG_NAME="v${PKG_VERSION}"
@@ -91,3 +116,41 @@ bin/test
 
 WMD_DOC_OPEN_FORCE="false" \
 bin/doc
+
+cat <<EOF
+
+Checks OK. Going to publish to crates.io.
+
+EOF
+
+# Calculate publish order from dependency graph
+
+PUB_ORDER="$(
+cargo metadata --format-version 1 --no-deps \
+    | jq '.packages[]
+          | { name, version, id, manifest_path,
+              deps: [ .dependencies[]
+                      | select(.path)
+                      | { name, req, path }
+              ] }
+          | .name as $pkg
+          | (.deps[] | { lib: .name, user: $pkg})
+            // { lib: "_", user: $pkg }
+          | "\(.lib) \(.user)"
+      ' -r \
+    | tsort \
+    | tee /dev/stderr
+)"
+
+for pkg in ${PUB_ORDER}; do
+    cat <<EOF
+
+Publishing '${pkg}'
+
+EOF
+
+    cargo publish --dry-run --locked --package "${pkg}"
+
+    echo "Sleeping to wait for package to be available on crates.io"
+    sleep 15
+done

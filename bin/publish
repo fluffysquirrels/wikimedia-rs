@@ -156,7 +156,7 @@ Publishing '${pkg}'
 
 EOF
 
-    cargo publish --dry-run --locked --package "${pkg}"
+    cargo publish --locked --package "${pkg}"
 
     echo "Sleeping to wait for package to be available on crates.io"
     sleep 15

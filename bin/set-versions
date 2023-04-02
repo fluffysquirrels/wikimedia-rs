@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -eu -o pipefail;
+
+readonly repo_dir="$( cd $(dirname ${BASH_SOURCE})/..; pwd )";
+
+cd "${repo_dir}"
+
+WORKSPACE_CRATE_NAMES="$(tomato --format json get workspace.dependencies Cargo.toml \
+                         | jq 'to_entries[]
+                               | select((.value | objects | .path)
+                                        and (.value.path | test("^crates/"))
+                                 )
+                               | .key
+                           ' -r
+                        )"
+echo -e "WORKSPACE_CRATE_NAMES = \n'${WORKSPACE_CRATE_NAMES}'"
+
+: "${NEW_VERSION:?Set NEW_VERSION to the new SemVer version string}"
+
+tomato set workspace.package.version "${NEW_VERSION}" Cargo.toml
+
+cat <<< "${WORKSPACE_CRATE_NAMES}" \
+    | while read crate;
+    do
+        tomato set "workspace.dependencies.${crate}.version" "${NEW_VERSION}" Cargo.toml
+    done

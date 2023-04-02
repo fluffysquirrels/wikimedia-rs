@@ -3510,7 +3510,7 @@ dependencies = [
 
 [[package]]
 name = "wikimedia"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -3551,7 +3551,7 @@ dependencies = [
 
 [[package]]
 name = "wikimedia-download"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "askama",
@@ -3583,7 +3583,7 @@ dependencies = [
 
 [[package]]
 name = "wikimedia-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "capnp",

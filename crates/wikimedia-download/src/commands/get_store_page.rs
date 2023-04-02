@@ -17,7 +17,7 @@ use wikimedia_store::{
     StorePageId,
 };
 
-/// Get a page from a chunk.
+/// Get a page from the store.
 #[derive(clap::Args, Clone, Debug)]
 pub struct Args {
     #[clap(flatten)]

@@ -17,14 +17,14 @@
 /// tests in this source file for an example.
 ///
 /// You must have dependencies on the crates [`once_cell`][docs_once_cell]
-/// and [`regex`][docs_regex] to use this macro.
+/// and [`regex`][docs_regex_crate] to use this macro.
 ///
 /// Based on this macro in the [`once_cell`][docs_once_cell] crate documentation:
 /// <https://docs.rs/once_cell/1.17.1/once_cell/index.html#lazily-compiled-regex>
 ///
 /// [docs_Regex]: https://docs.rs/regex/1.7.3/regex/struct.Regex.html
 /// [docs_Regex_new]: https://docs.rs/regex/1.7.3/regex/struct.Regex.html#method.new
-/// [docs_regex]: https://docs.rs/regex
+/// [docs_regex_crate]: https://docs.rs/regex
 /// [docs_once_cell]: https://docs.rs/once_cell
 /// [slice::concat]: https://doc.rust-lang.org/std/primitive.slice.html#method.concat
 #[macro_export]

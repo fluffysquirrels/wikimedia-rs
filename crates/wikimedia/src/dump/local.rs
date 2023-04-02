@@ -354,7 +354,7 @@ fn file_specs_from_job_dir(
                 }
 
                 const FILE_RE_PREFIX: &'static str =
-                    r#".*pages.*articles(-multistream)?[0-9]+\.xml-p[0-9]+p[0-9]+"#;
+                    r#".*pages.*articles(-multistream)?.*\.xml.*"#;
 
                 let name_regex = match compression {
                     Compression::Bzip2 => lazy_regex!(FILE_RE_PREFIX, r#"\.bz2$"#),

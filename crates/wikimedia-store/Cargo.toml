@@ -1,10 +1,11 @@
 [package]
 name = "wikimedia-store"
 description = "Indexed, fast local storage of wikimedia data."
+documentation = "https://docs.rs/wikimedia-store"
 
 authors.workspace = true
-documentation.workspace = true
 edition.workspace = true
+homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 readme.workspace = true

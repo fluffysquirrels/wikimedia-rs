@@ -4,7 +4,6 @@
     iterator_try_reduce,
 )]
 
-// The rest of these sub-modules are in alphabetical order.
 mod args;
 mod commands;
 
@@ -17,6 +16,7 @@ use wikimedia::{
 };
 
 #[derive(clap::Parser, Clone, Debug)]
+#[command(version, about)]
 struct Args {
     #[command(subcommand)]
     command: Command,

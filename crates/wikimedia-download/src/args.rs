@@ -31,8 +31,10 @@ pub struct CommonArgs {
     ///     `platform_dirs::AppDirs.data_dir`.
     ///
     ///     For Linux this is: `${XDG_DATA_HOME}` if set or `~/.local/share`
+    ///
     ///     For Windows this is `%LOCALAPPDATA%` if set or `C:\Users\%USERNAME%\AppData\Local`
-    ///     For macOs this is `~/Library/Application Support`
+    ///
+    ///     For macOS this is `~/Library/Application Support`
     ///
     ///     See the `platform-dirs` documentation:
     ///     <https://github.com/cjbassi/platform-dirs-rs/blob/b7a5a9ad4535aa4fb156bfeb9cf887dd2bd696a4/README.md#appdirs>.

@@ -2,8 +2,8 @@
 
 use anyhow::{bail, Context, format_err};
 use crate::{
-    dump::{self, DumpName, DumpVersionStatus, FileMetadata, JobName, JobStatus, Version,
-           VersionSpec},
+    dump::{self, DumpName, DumpVersionStatus, FileMetadata, JobName, JobStatus,
+           local, Version, VersionSpec},
     http,
     Result,
     TempDir,
@@ -278,6 +278,18 @@ pub async fn download_job(
 
     let out_dir = &*options.out_dir;
 
+    let job_path = local::job_path(out_dir, dump_name, &version, job_name);
+    let expected_bytes = files.iter().map(|(_, file_meta)| file_meta.size.unwrap_or(0))
+                                     .sum();
+
+    tracing::info!(dump = &*dump_name.0,
+                   version = &*version.0,
+                   job = &*job_name.0,
+
+                   download_dir = %job_path.display(),
+                   expected_bytes = Bytes(expected_bytes).as_value(),
+                   "Starting to download job files");
+
     let temp_dir = TempDir::create(out_dir, options.keep_temp_dir)?;
     let download_client = http::download_client(&options.http_options)?;
 
@@ -338,7 +350,23 @@ pub async fn download_job(
 
                    duration = job_res.duration.as_value(),
 
-                   "download_job complete");
+                   dump = &*dump_name.0,
+                   version = &*version.0,
+                   job = &*job_name.0,
+
+                   download_dir = %job_path.display(),
+
+                   "Downloading job files complete");
+
+    eprintln!("Downloading job files complete\n\
+               |   download_dir = {download_dir}\n\
+               |   dump         = {dump}\n\
+               |   version      = {version}\n\
+               |   job          = {job}\n",
+              download_dir = job_path.display(),
+              dump = &*dump_name.0,
+              version = &*version.0,
+              job = &*job_name.0);
 
     Ok(job_res)
 }

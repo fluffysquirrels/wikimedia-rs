@@ -1,10 +1,11 @@
 [package]
 name = "wikimedia"
 description = "Download and read wikimedia data."
+documentation = "https://docs.rs/wikimedia"
 
 authors.workspace = true
-documentation.workspace = true
 edition.workspace = true
+homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 readme.workspace = true

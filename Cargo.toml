@@ -8,8 +8,8 @@ members = [
 [workspace.package]
 authors = ["Alex Helfet <alex.helfet@gmail.com>"]
 description = "Crate and tools to download and view data from Wikimedia."
-documentation = "https://docs.rs/wikimedia/latest"
 edition = "2021"
+homepage = "https://github.com/fluffysquirrels/wikimedia-rs"
 keywords = ["mediawiki", "wikimedia", "wikipedia"]
 license = "MIT"
 readme = "README.md"

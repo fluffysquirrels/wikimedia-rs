@@ -1,10 +1,11 @@
 [package]
 name = "wikimedia-download"
-description = "CLI tool to download and view wikimedia data."
+description = "CLI tool to download and view Wikimedia data."
+documentation = "https://docs.rs/wikimedia-download"
 
 authors.workspace = true
-documentation.workspace = true
 edition.workspace = true
+homepage.workspace = true
 keywords.workspace = true
 license.workspace = true
 readme.workspace = true

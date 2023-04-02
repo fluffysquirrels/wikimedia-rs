@@ -4,6 +4,55 @@
 
 ## Must do before publishing
 
+* Documentation:
+    * Documentation comments for all command args
+    * Pre-requisites to rebuild capnp with bin/generate-source.  
+      Describe why `capnp/generated` is checked in.
+        * capnp, capnp-rust on path
+        * TODO: Nice error messages when these are missing
+    * Pre-requisites for `bin/publish`
+        * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
+    * `doc/publish.md` instructions
+    * Quick start from zero to web.
+    * bin scripts
+    * Mirror selection and rationale
+    * Top level module documentation
+    * Platforms tested
+    * Architecture (basics of crate and module layout)
+    * out-dir layout:
+
+      ```
+      out/dumps
+      out/dumps/enwiki
+      out/dumps/enwiki/20230320
+      out/dumps/enwiki/20230320/articlesmultistreamdump
+      out/http_cache
+      out/store
+      out/store/chunks
+      out/store/chunks/articles-*.cap
+      out/store/chunks/lock
+      out/store/chunks/temp
+      out/store/index
+      out/store/index/index.db
+      out/store/index/index.db-shm
+      out/store/index/index.db-wal
+      ```
+
+    * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
+    ```
+    CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
+    wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
+    ```
+    * Shell completion script setup.
+    ```
+    bin/generate-completions && exec zsh
+    ```
+
+* `--version latest` should fall back to the previous version if data is missing.
+* Update default logging for a good experience out of the box.
+
+* web should support alternative dumps with the correct URLs.
+
 * tracing-bunyan-formatter docs.rs config:
   ```toml
   [package.metadata.docs.rs]
@@ -41,54 +90,6 @@
                "id": 35936988,
              },
            }`
-* Documentation:
-    * Pre-requisites for everything:
-        * bash, unix environment
-        * rustup
-    * Pre-requisites for build and run scripts:
-        * pandoc on path
-    * Pre-requisites to rebuild capnp with bin/generate-source.  
-      Describe why `capnp/generated` is checked in.
-        * capnp, capnp-rust on path
-        * TODO: Nice error messages when these are missing
-    * Pre-requisites for `bin/publish`
-        * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
-    * `doc/publish.md` instructions
-    * Quick start from zero to web.
-    * Default out dir.
-    * bin scripts
-    * Mirror selection and rationale
-    * Top level module documentation
-    * Platforms tested
-    * Architecture (basics of crate and module layout)
-    * out-dir layout:
-
-      ```
-      out/dumps
-      out/dumps/enwiki
-      out/dumps/enwiki/20230320
-      out/dumps/enwiki/20230320/articlesmultistreamdump
-      out/http_cache
-      out/store
-      out/store/chunks
-      out/store/chunks/articles-*.cap
-      out/store/chunks/lock
-      out/store/chunks/temp
-      out/store/index
-      out/store/index/index.db
-      out/store/index/index.db-shm
-      out/store/index/index.db-wal
-      ```
-
-    * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
-    ```
-    CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
-    wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
-    ```
-    * Shell completion script setup.
-    ```
-    bin/generate-completions && exec zsh
-    ```
 
 * web
     * 404 page for no route match
@@ -134,6 +135,7 @@
 
 ### Features
 
+* Support compiling without `valuable`? Support compiling without nightly?
 * Option to recompress as LZ4 in Rust.
 * Android app
     *  https://developer.android.com/develop/ui/views/layout/webapps/webview#kotlin

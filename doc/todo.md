@@ -2,44 +2,24 @@
 
 ## WIP
 
-* Prepare PR for `tracing-bunyan-formatter`  
-  <https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30>  
-  <https://github.com/LukeMathWalker/tracing-bunyan-formatter/pull/31>
-
-    * [x] README.md `## Optional features`
-    * [x] CI builds and tests with --features valuable
-    * [x] Test cases for valuable structs
-    * [x] docs.rs config, in particular feature flags.
-    * [x] Example in /examples
-
 ## Must do before publishing
+
+* tracing-bunyan-formatter docs.rs config:
+  ```toml
+  [package.metadata.docs.rs]
+  all-features = true
+  # enable unstable features in the documentation
+  rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable"]
+  # it's necessary to _also_ pass `--cfg tokio_unstable` to rustc, or else
+  # dependencies will not be enabled, and the docs build will fail.
+  rustc-args = ["--cfg", "tokio_unstable"]
+  ```
 
 * Document that import --limit is approximate.
 * `bin/publish` script: generate capnp rust, force clean git status,
   run builds and tests, publish to crates.io.
 * Split source into several crates
     * Remove nightly `#![feature()]` use that isn't required.
-    * Trim dependencies.
-        * Snippets:
-            * Print all unique uses by crate (e.g. ``use blah::`, `blah::`)
-      ```
-      (
-          rg '(?<=^use )[^;:]*' -o --no-heading \
-          && rg '(?<=[^A-Za-z0-9_\:])[a-z0-9_]+(?=::)' -o --no-heading \
-                 --case-sensitive --glob \*.rs
-      )   | sed -Ee 's#^(crates/[-a-z]+)/[^:]+:(.+)$#\1:\2#' \
-          | mlr --hi --c2p --ifs ':' \
-              rename 1,crate,2,ref \
-              then filter -e '$ref != "crate" && $ref != "std"' \
-              then sort -f crate,ref \
-              then uniq -a
-      ```
-            * Print all dependencies with `blah.workspace = true` in child crates:
-      ```
-      rg '^[^\.]+\.workspace'  --glob Cargo.toml -o --no-heading --no-line-number \
-          --no-filename \
-          | sort -u
-      ```
     * Document crate split in the README.md
 * MirrorUrl newtype
 * Document bin name (`wmd`), CLI tool crate name (`wikimedia-downloader`),
@@ -53,17 +33,19 @@
     * Test: Batch render all pages.
         * pandoc error during rendering for this page (from dump enwiki/20230301/articlesdump):
           `wmd get-store-page --out html --mediawiki-id 62585868`
-        `{
-  "ns_id": 0,
-  "id": 62585868,
-  "title": "Suga's Interlude",
-  "revision": {
-    "id": 35936988,}}`
+          `{
+             "ns_id": 0,
+             "id": 62585868,
+             "title": "Suga's Interlude",
+             "revision": {
+               "id": 35936988,
+             },
+           }`
 * Documentation:
     * Pre-requisites for everything:
         * bash, unix environment
         * rustup
-    * Pre-requisites for build and run scripts
+    * Pre-requisites for build and run scripts:
         * pandoc on path
     * Pre-requisites to rebuild capnp with bin/generate-source.  
       Describe why `capnp/generated` is checked in.

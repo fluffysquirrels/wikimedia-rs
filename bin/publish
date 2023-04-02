@@ -159,5 +159,5 @@ EOF
     cargo publish --locked --package "${pkg}"
 
     echo "Sleeping to wait for package to be available on crates.io"
-    sleep 15
+    sleep 5
 done

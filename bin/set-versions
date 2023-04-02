@@ -24,3 +24,5 @@ cat <<< "${WORKSPACE_CRATE_NAMES}" \
     do
         tomato set "workspace.dependencies.${crate}.version" "${NEW_VERSION}" Cargo.toml
     done
+
+cargo update --workspace

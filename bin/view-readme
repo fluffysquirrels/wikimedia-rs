@@ -15,7 +15,7 @@ HEADER="
 
 pandoc --from markdown \
        --to html \
-       --indented-code-classes=number-lines \
+       --shift-heading-level-by -1 \
        --standalone \
        --metadata title=wmd/README \
        --metadata "toc-title=Table of contents" \

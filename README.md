@@ -50,7 +50,7 @@ and their [installation instructions page](https://pandoc.org/installing.html).
 ## Quick start
 
 To show help instructions for `wmd`'s subcommands:
-```sh {.numberLines}
+```sh
 # Help for `wmd` and its list of subcommands
 wmd help
 
@@ -62,7 +62,7 @@ wmd download --help
 To download the text for the latest version of all articles on English
 Wikipedia (about 20 GB to download as of 2023-03-20):
 
-```sh {.numberLines}
+```sh
 export WMD_MIRROR_URL=https://ftp.acc.umu.se/mirror/wikimedia.org/dumps
 
 wmd download  --dump enwiki \

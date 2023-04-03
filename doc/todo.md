@@ -6,16 +6,11 @@
 
 * Documentation:
     * Documentation comments for all command args
-    * Pre-requisites to rebuild capnp with bin/generate-source.  
-      Describe why `capnp/generated` is checked in.
-        * capnp, capnp-rust on path
-        * TODO: Nice error messages when these are missing
     * Pre-requisites for `bin/publish`
         * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
     * `doc/publish.md` instructions
     * Quick start from zero to web.
     * bin scripts
-    * Mirror selection and rationale
     * Top level module documentation
     * Platforms tested
     * Architecture (basics of crate and module layout)

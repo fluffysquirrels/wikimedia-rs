@@ -166,6 +166,7 @@ are modified the build scripts will detect this and regenerate the
 accessor code automatically.
 
 You must install these dependencies on your executable path to regenerate the accessor code:
+
 * `capnp`, the Cap'n Proto schema compiler;
   see [the install instructions](https://capnproto.org/install.html).
 * `capnpc-rust`, the `capnp` Rust plugin. Install it with `cargo install capnpc`.

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+
+readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
+
+cd "${repo_dir}"
+
+pandoc --from markdown \
+       --to html \
+       --standalone \
+       --metadata title=wmd/README \
+       README.md \
+    > target/README.html \
+    && xdg-open target/README.html

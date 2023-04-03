@@ -5,10 +5,19 @@ readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
 cd "${repo_dir}"
 
+HEADER="
+<style>
+  body {
+    max-width: 100%;
+  }
+</style>
+"
+
 pandoc --from markdown \
        --to html \
        --standalone \
        --metadata title=wmd/README \
+       --include-in-header <(echo "${HEADER}") \
        README.md \
     > target/README.html \
     && xdg-open target/README.html

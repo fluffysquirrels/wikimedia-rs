@@ -38,10 +38,6 @@
     CARGO_TERM_QUIET="true" WMD_OUT_DIR="${HOME}/wmd/out/import-2" \
     wmd --log-json import-dump --job-dir ~/wmd/out/job/ --count 10 --clear 2> >(jq '.')
     ```
-    * Shell completion script setup.
-    ```
-    bin/generate-completions && exec zsh
-    ```
 
 * `--version latest` should fall back to the previous version if data is missing.
 * Update default logging for a good experience out of the box.

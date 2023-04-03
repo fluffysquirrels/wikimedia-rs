@@ -17,6 +17,9 @@ There are 3 related crates in the [`wikimedia-rs` source repository][repo]:
   and view it over a web interface.  
   [Crate](https://crates.io/crates/wikimedia-download)
 
+These crates and the contents of the [`wikimedia-rs` source repository][repo]
+are licensed under the MIT license, see [LICENSE.md](LICENSE.md).
+
 ## To install
 
 Install the Rust toolchain. [`rustup`](https://rustup.rs/) is the

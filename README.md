@@ -83,7 +83,8 @@ Downloading job files complete
 |   job          = articlesdump
 ```
 
-By default the files will be downloaded to
+By default the files will be downloaded to:
+
 * `~/.local/share/wmd` on Linux
 * `~/Library/Application Support/wmd` on macOS
 * `C:\Users\%USERNAME%\AppData\Local\wmd` on Windows

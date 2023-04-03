@@ -125,7 +125,7 @@ EOF
 
 # Calculate publish order from dependency graph
 
-PUB_ORDER="$(
+PUB_ORDER=($(
 cargo metadata --format-version 1 --no-deps \
     | jq '.packages[]
           | { name, version, id, manifest_path,
@@ -139,16 +139,14 @@ cargo metadata --format-version 1 --no-deps \
           | "\(.lib) \(.user)"
       ' -r \
     | tsort \
+    | # "_" is a dummy dependency to make sure crates show up when they do not depend
+      # on anything in the workspace and nothing in the workspace depends on them.
+      # Ignore it.
+      egrep -v '^_?$' \
     | tee /dev/stderr
-)"
+))
 
-for pkg in ${PUB_ORDER}; do
-    if [ "${pkg}" == "_" ]; then
-        # "_" is a dummy dependency to make sure crates show up when they do not depend
-        # on anything in the workspace and nothing in the workspace depends on them.
-        # Ignore it.
-        continue
-    fi
+for pkg in "${PUB_ORDER[@]}"; do
 
     cat <<EOF
 

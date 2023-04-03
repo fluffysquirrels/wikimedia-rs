@@ -17,7 +17,9 @@ pandoc --from markdown \
        --to html \
        --standalone \
        --metadata title=wmd/README \
+       --metadata "toc-title=Table of contents" \
        --include-in-header <(echo "${HEADER}") \
+       --toc \
        README.md \
     > target/README.html \
     && xdg-open target/README.html

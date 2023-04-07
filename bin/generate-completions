@@ -5,7 +5,6 @@ readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
 cd "${repo_dir}"
 
-rm -rf target/completion.*
-
 bin/wmd completion --shell zsh > target/tmp_completion.zsh
+rm -rf target/completion.*
 mv target/tmp_completion.zsh target/completion.zsh

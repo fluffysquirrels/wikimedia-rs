@@ -48,3 +48,4 @@ tokio-util.workspace = true
 tracing.workspace = true
 valuable.workspace = true
 valuable-serde.workspace = true
+zstd.workspace = true

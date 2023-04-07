@@ -5,6 +5,9 @@
 ## Must do before publishing
 
 * Documentation:
+    * Repo layout
+    * Comment in bin/{build,doc,test} about why we switch directory  
+      (to use .rust-toolchain.toml, .cargo/config.toml)
     * Documentation comments for all command args
     * Pre-requisites for `bin/publish`
         * cargo install tomato-toml <https://crates.io/crates/tomato-toml>

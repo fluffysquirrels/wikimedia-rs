@@ -75,6 +75,7 @@ tracing-bunyan-formatter = { version = "0.3.7", features = ["valuable"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "json", "time"] }
 valuable = { version = "0.1.0", features = ["derive"] }
 valuable-serde = "0.1.0"
+zstd = { version = "0.12.3", features = ["zstdmt"] }
 
 [profile.release]
 # strip = true

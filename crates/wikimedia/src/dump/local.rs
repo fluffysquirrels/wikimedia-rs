@@ -97,6 +97,7 @@ pub struct FileSpec {
 pub enum Compression {
     Bzip2,
     LZ4,
+    Zstd,
     None,
 }
 
@@ -121,7 +122,7 @@ impl Display for Compression {
 
 impl clap::ValueEnum for Compression {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Bzip2, Self::LZ4, Self::None]
+        &[Self::Bzip2, Self::LZ4, Self::Zstd, Self::None]
     }
 
     fn to_possible_value(&self) -> Option<PossibleValue> {
@@ -132,6 +133,7 @@ impl clap::ValueEnum for Compression {
                               .help("Use bzip2 compression. Alias 'bz2'.")
             }
             Self::LZ4 => PossibleValue::new("lz4").help("Use LZ4 compression."),
+            Self::Zstd => PossibleValue::new("zstd").help("Use zstd compression."),
             Self::None => PossibleValue::new("none").help("Use no compression."),
         })
     }
@@ -275,7 +277,7 @@ impl FileSpec {
                     Ordering::SeqCst);
             });
 
-        let file_bufread = BufReader::with_capacity(64 * 1024, prog_read);
+        let file_bufread = BufReader::with_capacity(128 * 1024, prog_read);
 
         fn into_page_iter<T>(inner: T
         ) -> Box<dyn Iterator<Item = Result<Page>> + Send>
@@ -326,6 +328,24 @@ impl FileSpec {
                 let lz4_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
                 (uncompressed_bytes_read, into_page_iter(lz4_bufread))
             }
+            Compression::Zstd => {
+                let zstd_decoder = zstd::stream::read::Decoder::with_buffer(file_bufread)?;
+
+                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
+                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
+                let uncompressed_prog_read = ProgressReader::new(
+                    zstd_decoder,
+                    move |read_len| {
+                        uncompressed_bytes_read2.fetch_add(
+                            read_len.try_into().expect("usize as u64"),
+                            Ordering::SeqCst);
+                    });
+
+                let capacity = zstd::stream::read::Decoder::<'_, std::io::Empty>
+                                   ::recommended_output_size();
+                let zstd_bufread = BufReader::with_capacity(capacity, uncompressed_prog_read);
+                (uncompressed_bytes_read, into_page_iter(zstd_bufread))
+            }
         };
 
         Ok(OpenJobFile {
@@ -359,6 +379,7 @@ fn file_specs_from_job_dir(
                 let name_regex = match compression {
                     Compression::Bzip2 => lazy_regex!(FILE_RE_PREFIX, r#"\.bz2$"#),
                     Compression::LZ4 => lazy_regex!(FILE_RE_PREFIX, r#"\.lz4$"#),
+                    Compression::Zstd => lazy_regex!(FILE_RE_PREFIX, r#"\.zstd$"#),
                     Compression::None => lazy_regex!(FILE_RE_PREFIX, r#"$"#),
                 };
                 let name = dir_entry.file_name().to_string_lossy().into_owned();

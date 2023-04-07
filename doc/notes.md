@@ -185,7 +185,7 @@ du -cm *index*.bz2 | egrep total | sed -e 's/total/index.txt.bz2 total/' \
 cd ~/wmd/out/job
 ls *.bz2 \
     | sort --version-sort \
-    | xargs -n1 -P 4 -I% bash -c \
+    | xargs -n1 -P 4 -I% zsh -c \
     'set -o pipefail;
 
      IN="%";
@@ -195,7 +195,80 @@ ls *.bz2 \
      echo "${BASE}";
      if ! test -f "${OUT}"; then
          echo "recompressing ${BASE}"
-         bzcat "${IN}" | lz4 --verbose --compress -1 - "${OUT}";
+         time bzcat "${IN}" | lz4 --verbose --compress -1 - "${OUT}";
+     fi'
+```
+
+* Recompress data files as zstd snippet:
+```
+ls *.bz2 \
+    | sort --version-sort \
+    | xargs -n1 -P 2 -I% zsh -c \
+    'set -euo pipefail
+
+     IN="%"
+     BASE="${IN/.bz2/}"
+     OUT="${BASE}.zstd"
+
+     echo "${BASE}"
+     if ! test -f "${OUT}"; then
+         echo "recompressing ${BASE}: start"
+         time bzcat "${IN}" | zstd --compress -T1 > "${OUT}"
+         echo "recompressing ${BASE}: done"
+         du -sm ${BASE}* | sort -k2
+         echo
+     fi'
+```
+
+* Recompress lz4 files as zstd snippet:
+```
+ls lz4/*.lz4 \
+    | sort --version-sort \
+    | xargs -n1 -P 2 -I% zsh -c \
+    'set -euo pipefail
+
+     IN="%"
+     BASE="$(basename -s .lz4 "${IN}")"
+     OUT="zstd/${BASE}.zstd"
+     OUT_WIP="${OUT}.wip"
+
+     echo "${BASE}"
+     if ! test -f "${OUT}"; then
+         echo "recompressing ${BASE}: start"
+         time lz4cat "${IN}" | zstd --compress -T1 > "${OUT_WIP}"
+         mv "${OUT_WIP}" "${OUT}"
+         echo "recompressing ${BASE}: done"
+         du -sm **/"${BASE}"* | sort -k2
+         echo
+     fi'
+```
+
+* Recompress lz4 files as lz4 snippet:
+```
+export OUT_DIR="lz4_-9"
+mkdir -p "${OUT_DIR}"
+
+ls lz4/*.lz4 \
+    | sort --version-sort \
+    | xargs -n1 -P 2 -I% zsh -c \
+    'set -euo pipefail
+
+     IN="%"
+     BASE="$(basename -s .lz4 "${IN}")"
+     OUT="${OUT_DIR}/${BASE}.lz4"
+     OUT_WIP="${OUT}.wip"
+
+     echo "${BASE}"
+     if ! test -f "${OUT}"; then
+         echo "recompressing ${BASE}: start"
+         time lz4cat "${IN}" \
+             | lz4 --compress -9 \
+             | pv --cursor --name "${OUT_WIP}" \
+             > "${OUT_WIP}"
+         mv "${OUT_WIP}" "${OUT}"
+         echo "recompressing ${BASE}: done"
+         du -sm **/"${BASE}"* | sort -k2
+         echo
      fi'
 ```
 
@@ -206,9 +279,23 @@ echo "bz2 file count: $(ls *.bz2 | wc -l)"
 du -cm *.lz4 | egrep total | sed -e "s/total/*.lz4 total/"
 echo "lz4 file count: $(ls *.lz4 | wc -l)"
 ```
+
     * 19723 MB articles*.xml.bz2 total
     * 37328 MB articles*.xml.lz4 total
     * 86.9  GB uncompressed
+
+* Decompression throughput for bz2, lz4, zstd:
+```
+< zstd/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.zstd zstdcat | pv > /dev/null
+ 948MiB 0:00:03 [ 257MiB/s]
+
+< lz4/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.lz4 lz4cat | pv > /dev/null
+ 948MiB 0:00:02 [ 433MiB/s]
+
+< enwiki-20230320-pages-articles-multistream1.xml-p1p41242.bz2 bzcat | pv > /dev/null
+ 948MiB 0:01:06 [14.2MiB/s]
+```
+
 * Stores
     * RocksDB
     * lmdb

@@ -162,17 +162,23 @@
 
 {% block content %}
 
-<p><a class="header-links" href="https://en.wikipedia.org/wiki/{{ slug }}">
-     This page on enwiki
+
+{% match wikimedia_url_base %}
+  {% when Some with (url_base) %}
+<p><a class="header-links" href="{{ url_base }}/{{ slug }}">
+     This page on {{ dump_name }}
 </a></p>
-<p><a class="header-links" href="/enwiki/page/by-id/{{ mediawiki_id }}">
+  {% when None %}
+{% endmatch %}
+
+<p><a class="header-links" href="/{{ dump_name }}/page/by-id/{{ mediawiki_id }}">
      This page by MediaWiki ID
 </a></p>
-<p><a class="header-links" href="/enwiki/page/by-title/{{ slug }}">
+<p><a class="header-links" href="/{{ dump_name }}/page/by-title/{{ slug }}">
      This page by title
 </a></p>
-<p><a class="header-links" href="/enwiki/page/by-store-id/{{ store_page_id }}">
-    This page by page store ID
+<p><a class="header-links" href="/{{ dump_name }}/page/by-store-id/{{ store_page_id }}">
+     This page by page store ID
 </a></p>
 
 {{ wikitext_html|safe }}

@@ -18,7 +18,7 @@ use std::{
     future::Future,
     net::SocketAddr,
     result::Result as StdResult,
-    sync::{Arc, Mutex},
+    sync::{Arc, MutexGuard},
 };
 use tower_http::{
     catch_panic::CatchPanicLayer,
@@ -41,19 +41,54 @@ pub struct Args {
     common: CommonArgs,
 }
 
-struct WebState {
-    args: Args,
-    store: Mutex<store::Store>,
+mod state {
+    use anyhow::{ensure, format_err};
+    use std::sync::{Mutex, MutexGuard};
+    use super::Args;
+    use wikimedia::{dump::DumpName, Result};
+    use wikimedia_store::Store;
+
+    pub struct WebState {
+        args: Args,
+        store: Mutex<Store>,
+        store_dump_name: DumpName,
+    }
+
+    impl WebState {
+        pub fn new(args: Args) -> Result<WebState> {
+            let store = args.common.store_options()?.build()?;
+
+            Ok(WebState {
+                store: Mutex::new(store),
+                store_dump_name: args.common.dump_name().clone(),
+
+                // This moves `args`, so do it last.
+                args,
+            })
+        }
+
+        pub fn args(&self) -> &Args {
+            &self.args
+        }
+
+        pub fn store<'state>(&'state self, dump_name: &str
+        ) -> Result<MutexGuard<'state, Store>>
+        {
+            ensure!(dump_name == &*self.store_dump_name.0,
+                    "WebState::store() error: Dump name requested ({dump_name}) \
+                     is not the same as the loaded store's dump name ({store_dump_name})",
+                    store_dump_name = &*self.store_dump_name.0);
+
+            Ok(self.store.lock()
+                   .map_err(|_err| format_err!("PoisonError unlocking Mutex in web module"))?)
+        }
+    }
 }
+use state::WebState;
 
 #[tracing::instrument(level = "trace")]
 pub async fn main(args: Args) -> Result<()> {
-    let store = args.common.store_options()?.build()?;
-
-    let state = WebState {
-        args: args.clone(),
-        store: Mutex::new(store),
-    };
+    let state = Arc::new(WebState::new(args.clone())?);
 
     let app = Router::new()
         .route("/", routing::get(get_index))
@@ -70,7 +105,7 @@ pub async fn main(args: Args) -> Result<()> {
         //         .layer(HandleErrorLayer::new(oops))
         // )
 
-        .with_state(Arc::new(state))
+        .with_state(state)
 
         // Lower layers run first.
         .layer(tower::ServiceBuilder::new()
@@ -125,8 +160,8 @@ impl From<fmt::Error> for WebError {
     }
 }
 
-impl<T> From<std::sync::PoisonError<std::sync::MutexGuard<'_, T>>> for WebError {
-    fn from(_e: std::sync::PoisonError<std::sync::MutexGuard<'_, T>>) -> WebError {
+impl<T> From<std::sync::PoisonError<MutexGuard<'_, T>>> for WebError {
+    fn from(_e: std::sync::PoisonError<MutexGuard<'_, T>>) -> WebError {
         // PoisonError is from trying to unlock a poisoned mutex. It
         // contains the MutexGuard in case you want to clear the poison and continue.
         // However MutexGuard is not Send, and axum wants errors from handlers to be Send.
@@ -241,7 +276,7 @@ async fn get_categories(
 
     let limit = query.limit.unwrap_or(store::MAX_QUERY_LIMIT).min(store::MAX_QUERY_LIMIT);
 
-    let categories = state.store.lock()?
+    let categories = state.store(&*dump_name)?
         .get_category(
             query.slug_lower_bound.as_ref().map(|s| CategorySlug(s.clone())).as_ref(),
             Some(limit))?;
@@ -295,12 +330,15 @@ async fn get_category_by_slug(
 
     let limit = query.limit.unwrap_or(store::MAX_QUERY_LIMIT).min(store::MAX_QUERY_LIMIT);
 
-    let store = state.store.lock()?;
+    let store = state.store(&*dump_name)?;
     let pages: Vec<index::Page> = store.get_category_pages(
         &CategorySlug(category_slug.clone()),
         query.page_mediawiki_id_lower_bound,
         Some(limit),
     )?;
+
+    // Drop the MutexGuard.
+    drop(store);
 
     let page_mediawiki_id_lower_bound = pages.last().map(|page| page.mediawiki_id);
     let len = u64::try_from(pages.len()).expect("u64 from usize");
@@ -331,32 +369,32 @@ async fn get_category_by_slug(
 #[axum::debug_handler]
 async fn get_page_by_id(
     State(state): State<Arc<WebState>>,
-    Path((_dump_name, page_id)): Path<(String, u64)>,
+    Path((dump_name, page_id)): Path<(String, u64)>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
-    let page = state.store.lock()?.get_page_by_mediawiki_id(page_id)?;
+    let page = state.store(&*dump_name)?.get_page_by_mediawiki_id(page_id)?;
 
     response_from_mapped_page(page, &*state).await
 }
 
 async fn get_page_by_store_id(
     State(state): State<Arc<WebState>>,
-    Path((_dump_name, page_store_id)): Path<(String, String)>,
+    Path((dump_name, page_store_id)): Path<(String, String)>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
     let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
-    let page = state.store.lock()?.get_page_by_store_id(page_store_id)?;
+    let page = state.store(&*dump_name)?.get_page_by_store_id(page_store_id)?;
 
     response_from_mapped_page(page, &*state).await
 }
 
 async fn get_page_by_slug(
     State(state): State<Arc<WebState>>,
-    Path((_dump_name, page_slug)): Path<(String, String)>,
+    Path((dump_name, page_slug)): Path<(String, String)>,
 ) -> StdResult<impl IntoResponse, WebError> {
 
-    let page = state.store.lock()?.get_page_by_slug(&*page_slug)?;
+    let page = state.store(&*dump_name)?.get_page_by_slug(&*page_slug)?;
 
     response_from_mapped_page(page, &*state).await
 }
@@ -370,6 +408,9 @@ struct PageHtml {
     slug: String,
     store_page_id: StorePageId,
     wikitext_html: String,
+
+    dump_name: String,
+    wikimedia_url_base: Option<String>,
 }
 
 fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
@@ -383,24 +424,35 @@ fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
         Ok(p) => p,
         Err(e) => return Either::Left(Either::Right(future::err(e.into()))),
     };
-    let page = match dump::Page::try_from(&page_cap) {
+    let page_dump = match dump::Page::try_from(&page_cap) {
         Ok(p) => p,
         Err(e) => return Either::Left(Either::Right(future::err(e.into()))),
     };
 
-    let common_args = state.args.common.clone();
+    let common_args = state.args().common.clone();
+    let dump_name = page.dump_name();
 
     Either::Right(async move {
-        let wikitext_html = wikitext::convert_page_to_html(&page,
+        let wikitext_html = wikitext::convert_page_to_html(&page_dump,
+                                                           &dump_name,
                                                            &*common_args.out_dir()).await?;
-        let slug = slug::title_to_slug(&*page.title);
+        let slug = slug::title_to_slug(&*page_dump.title);
+        let dump_name = page.dump_name();
         let html = PageHtml {
-            title: page.title,
+            title: page_dump.title,
 
-            mediawiki_id: page.id,
+            mediawiki_id: page_dump.id,
             slug,
             store_page_id,
             wikitext_html,
+
+            wikimedia_url_base: match &*dump_name.0 {
+                "enwiki" => Some("https://en.wikipedia.org/wiki".to_string()),
+                _ => None,
+            },
+
+            // This moves dump_name, do it after matching on dump_name for wikimedia_url_base.
+            dump_name: dump_name.0,
         };
         Ok(html.into_response())
     })

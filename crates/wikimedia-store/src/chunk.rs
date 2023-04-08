@@ -27,7 +27,7 @@ use std::{
 };
 use valuable::Valuable;
 use wikimedia::{
-    dump,
+    dump::{self, DumpName},
     Error,
     lazy_regex,
     Result,
@@ -47,8 +47,9 @@ pub(crate) struct Store {
 }
 
 pub(crate) struct Options {
-    pub path: PathBuf,
+    pub dump_name: DumpName,
     pub max_chunk_len: u64,
+    pub path: PathBuf,
 }
 
 pub(crate) struct WriteLockGuard<'lock> {
@@ -85,6 +86,7 @@ pub struct ChunkId(pub(crate) u64);
 pub struct PageChunkIndex(pub(crate) u64);
 
 pub struct MappedChunk {
+    dump_name: DumpName,
     id: ChunkId,
     len: u64,
     path: PathBuf,
@@ -93,6 +95,7 @@ pub struct MappedChunk {
 
 pub struct MappedPage {
     chunk: MappedChunk,
+    dump_name: DumpName,
     store_id: StorePageId,
 }
 
@@ -348,6 +351,7 @@ impl Store {
         let typed_reader = reader.into_typed::<wmc::chunk::Owned>();
 
         let chunk = MappedChunk {
+            dump_name: self.opts.dump_name.clone(),
             id,
             len,
             path: path.clone(),
@@ -479,10 +483,13 @@ impl MappedChunk {
 
     fn get_mapped_page(self, idx: PageChunkIndex) -> Result<MappedPage> {
         Ok(MappedPage {
+            dump_name: self.dump_name.clone(),
             store_id: StorePageId {
                 chunk_id: self.id,
                 page_chunk_index: idx
             },
+
+            // This moves `self`, so do it last.
             chunk: self,
         })
     }
@@ -522,6 +529,10 @@ impl MappedChunk {
 impl MappedPage {
     pub fn borrow<'a>(&'a self) -> Result<wmc::page::Reader<'a>> {
         self.chunk.get_page(self.store_id.page_chunk_index)
+    }
+
+    pub fn dump_name(&self) -> DumpName {
+        self.dump_name.clone()
     }
 
     pub fn store_id(&self) -> StorePageId {

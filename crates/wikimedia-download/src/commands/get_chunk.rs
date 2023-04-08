@@ -9,6 +9,7 @@ pub struct Args {
     #[clap(flatten)]
     common: CommonArgs,
 
+    /// The chunk ID to examine. If not set, data about all chunks will be returned.
     #[arg(long)]
     chunk_id: Option<store::ChunkId>,
 }

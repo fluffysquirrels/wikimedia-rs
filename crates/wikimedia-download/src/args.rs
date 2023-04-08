@@ -22,6 +22,9 @@ pub struct CommonArgs {
     #[arg(from_global)]
     log_json: bool,
 
+    #[clap(flatten)]
+    dump_name: DumpNameArg,
+
     /// The directory to save the program's output, including downloaded files and HTTP cache.
     ///
     /// If not present tries these alternatives in order:
@@ -102,6 +105,7 @@ pub struct OpenSpecArgs {
     #[clap(flatten)]
     pub job_name: Option<JobNameArg>,
 
+    /// A single job file to use.
     #[arg(long)]
     pub job_file: Option<PathBuf>,
 
@@ -109,13 +113,15 @@ pub struct OpenSpecArgs {
     ///
     /// Can be used with multistream dump files.
     ///
-    /// Only used when --dump-file is set.
+    /// Only used when --job-file is set.
     #[arg(long)]
     pub seek: Option<u64>,
 
+    /// A directory of job files to use.
     #[arg(long)]
     pub job_dir: Option<PathBuf>,
 
+    /// The compression format to use when reading files.
     #[arg(long, value_enum, default_value_t = Compression::Bzip2)]
     pub compression: Compression,
 
@@ -180,7 +186,7 @@ impl CommonArgs {
     }
 
     pub fn store_path(&self) -> PathBuf {
-        self.out_dir().join("store")
+        self.out_dir().join("stores").join(&*self.dump_name.value.0)
     }
 
     pub fn http_options(&self) -> Result<http::OptionsBuilder> {
@@ -190,8 +196,13 @@ impl CommonArgs {
                .to_owned())
     }
 
+    pub fn dump_name(&self) -> DumpName {
+        self.dump_name.value.clone()
+    }
+
     pub fn store_options(&self) -> Result<store::Options> {
         Ok(store::Options::default()
+               .dump_name(self.dump_name.value.clone())
                .path(self.store_path())
                .to_owned())
     }

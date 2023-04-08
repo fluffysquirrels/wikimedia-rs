@@ -1,3 +1,13 @@
+//! Wrapper types that format in a useful way with Debug, Display or
+//! Valuable; typically as a human-readable string.
+//!
+//! These enable formatting and logging types easily, but also help
+//! guarantee at compile time that incompatible types (e.g. byte
+//! counts and Vec element counts) are not confused by using the
+//! [new type idiom].
+//!
+//! [new type idiom]: https://doc.rust-lang.org/rust-by-example/generics/new_types.html
+
 use std::{
     fmt::{Debug, Display, Write},
     time::Duration as StdDuration,
@@ -7,12 +17,15 @@ use valuable::{
     Value, Visit
 };
 
+/// Stores a Sha1Hash as a 20 byte array, but formats with `Debug` or `Display` as a lower case hex string.
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Sha1Hash(pub [u8; 20]);
 
+/// Stores a number of bytes as a `u64`, formats with `Display` as a human readable string like "12.53 MiB"
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Bytes(pub u64);
 
+/// Stores a byte transfer rate as bytes per second in a `f64`, formats with `Display` as a human readable string like "12.53 MiB/s"
 #[derive(Clone, Copy)]
 pub struct ByteRate(pub f64);
 
@@ -28,6 +41,10 @@ pub struct TransferStats {
     pub rate: ByteRate,
 }
 
+/// Stores a `std::time::Duration`,
+/// but formats with `Debug` or `Display` as a human-readable string like "1h 2m 1s 10ms",
+/// and translates with `Valuable` as
+///     `{ secs: 3721_u64, nanos: 10_000_000_u32, str: "1h 2m 1s 10ms" }`
 #[derive(Clone, Copy)]
 pub struct Duration(pub StdDuration);
 
@@ -50,6 +67,7 @@ impl Display for Sha1Hash {
     }
 }
 
+/// Translates as a tuple with a hex-encoded byte string inside, like `("abcdef123")`
 impl Valuable for Sha1Hash {
     fn as_value(&self) -> Value<'_> {
         // We don't store a String of the hash, so can't return an &str
@@ -221,7 +239,7 @@ impl Debug for Duration {
 
 impl Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        <Self as Debug>::fmt(self, f)
+        Debug::fmt(self, f)
     }
 }
 

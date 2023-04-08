@@ -11,14 +11,20 @@ pub struct Args {
     #[clap(flatten)]
     open_spec: OpenSpecArgs,
 
+    /// How to format the data fetched.
     #[arg(long, value_enum, default_value_t = OutputType::Json)]
     out: OutputType,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum OutputType {
+    /// Format the pages as JSON, with no body text.
     Json,
+
+    /// Format the pages as JSON, including the body text.
     JsonWithBody,
+
+    /// Do not print output; sometimes useful for benchmarking and testing.
     None,
 }
 

@@ -23,16 +23,19 @@ pub struct Args {
     #[clap(flatten)]
     common: CommonArgs,
 
-    /// The store page ID to get.
+    /// The single store page ID to get.
     #[arg(long)]
     store_page_id: Option<StorePageId>,
 
+    /// The chunk ID to get all the pages from.
     #[arg(long)]
     chunk_id: Option<store::ChunkId>,
 
+    /// The mediawiki ID of the page to get.
     #[arg(long)]
     mediawiki_id: Option<u64>,
 
+    /// The slug of the page to get.
     #[arg(long)]
     slug: Option<String>,
 
@@ -42,6 +45,7 @@ pub struct Args {
     #[arg(long, value_enum, default_value_t = OutputType::Json)]
     out: OutputType,
 
+    /// The maximum number of pages to get. No limit if not set.
     #[arg(long)]
     limit: Option<u64>,
 
@@ -52,16 +56,24 @@ pub struct Args {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum OutputType {
+    /// Output the page's Wikitext markup content as HTML.
     Html,
+
+    /// Output the page as a JSON object, without the body text.
     Json,
+
+    /// Output the page as a JSON object, including the body text.
     JsonWithBody,
 
     /// Copy the page title and IDs to an in-memory object, then discard it without outputting anything.
+    /// Sometimes useful for benchmarking.
     LoadDiscard,
 
     /// Copy the page IDs to an in-memory object, then discard it without outputting anything.
+    /// Sometimes useful for benchmarking.
     LoadIdDiscard,
 
+    /// Output nothing. Sometimes useful for benchmarking.
     None,
 }
 
@@ -186,7 +198,8 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>) -> Result<()>
         },
         OutputType::Html => {
             let page = dump::Page::try_from(&page)?;
-            let html = wikitext::convert_page_to_html(&page, &*args.common.out_dir()).await?;
+            let html = wikitext::convert_page_to_html(&page, &args.common.dump_name(),
+                                                      &*args.common.out_dir()).await?;
 
             if args.open {
                 // Write page HTML to a temp file.

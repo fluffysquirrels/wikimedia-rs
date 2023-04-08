@@ -32,6 +32,7 @@ use wikimedia::{
     dump::{
         self,
         CategorySlug,
+        DumpName,
         local::{FileSpec, JobFiles, OpenJobFile},
     },
     Error,
@@ -42,13 +43,15 @@ use wikimedia::{
 
 #[derive(Clone, Debug, Default)]
 pub struct Options {
-    path: Option<PathBuf>,
+    dump_name: Option<DumpName>,
     max_chunk_len: Option<u64>,
+    path: Option<PathBuf>,
 }
 
 struct OptionsBuilt {
-    path: PathBuf,
+    dump_name: DumpName,
     max_chunk_len: u64,
+    path: PathBuf,
 }
 
 pub struct Store {
@@ -92,6 +95,11 @@ macro_rules! try_import {
 pub const MAX_QUERY_LIMIT: u64 = 100;
 
 impl Options {
+    pub fn dump_name(&mut self, dump_name: DumpName) -> &mut Self {
+        self.dump_name = Some(dump_name);
+        self
+    }
+
     pub fn path(&mut self, path: impl Into<PathBuf>) -> &mut Self {
         self.path = Some(path.into());
         self
@@ -101,10 +109,13 @@ impl Options {
     pub fn build(&self) -> Result<Store> {
         let path = self.path.as_ref().cloned()
                        .ok_or_else(|| UninitializedFieldError::new("path"))?;
+        let dump_name = self.dump_name.as_ref().cloned()
+                            .ok_or_else(|| UninitializedFieldError::new("dump_name"))?;
 
         let opts = OptionsBuilt {
-            path: path.clone(),
+            dump_name: dump_name.clone(),
             max_chunk_len: self.max_chunk_len.unwrap_or(chunk::MAX_LEN_DEFAULT),
+            path: path.clone(),
         };
 
         let index = index::Options {
@@ -113,6 +124,7 @@ impl Options {
         }.build()?;
 
         let chunk_store = chunk::Options {
+            dump_name: opts.dump_name.clone(),
             max_chunk_len: opts.max_chunk_len,
             path: path.join("chunks"),
         }.build()?;

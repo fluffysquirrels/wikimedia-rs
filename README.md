@@ -4,7 +4,8 @@ Open source Rust libraries and tools for downloading and viewing data
 from [Wikimedia Foundation][wikimedia], the non-profit behind
 Wikipedia and other projects.
 
-There are 3 related crates in the [`wikimedia-rs` source repository][repo]:
+There are 3 related crates in the [`wikimedia-rs` source repository][repo]
+under the `crates/` subdirectory:
 
 * `wikimedia`: library to download and parse data from Wikimedia.  
   [Crate](https://crates.io/crates/wikimedia) |
@@ -111,7 +112,8 @@ wmd import-dump   --dump enwiki \
 ```
 
 Use the same dump and job you downloaded earlier, and the version that `wmd download` reported.
-An import of the latest version of all articles on English Wikipedia will occupy about 80 GB of disk storage. This is larger than the download size because the store is currently not compressed, but this is planned.
+An import of the latest version of all articles on English Wikipedia will occupy about 80 GB of disk storage.
+This is larger than the download size because the store is currently not compressed, but this is planned.
 
 Once the import command is done, you can view the downloaded pages in the web interface:
 
@@ -160,7 +162,8 @@ and shell completion files are generated with the
 
 Store pages are encoded using [Cap'n Proto](https://capnproto.org/)'s
 Rust implementation [`capnproto-rust`](https://github.com/capnproto/capnproto-rust).
-This requires generating accessor code (currently in [`crates/wikimedia-store/capnp/generated`][capnp-gen])
+This requires generating accessor code
+(currently in [`crates/wikimedia-store/capnp/generated`][capnp-gen])
 from `.capnp` schema files (currently in [`crates/wikimedia-store/capnp/`][capnp-schema]).
 
 The accessor code is checked into the source code repository so the
@@ -174,6 +177,13 @@ You must install these dependencies on your executable path to regenerate the ac
 * `capnp`, the Cap'n Proto schema compiler;
   see [the install instructions](https://capnproto.org/install.html).
 * `capnpc-rust`, the `capnp` Rust plugin. Install it with `cargo install capnpc`.
+
+### Repository layout
+
+* `/bin/`: utility scripts to help during development
+* `/crates/`: source for each sub-crate in the repository
+* `/doc/`: documentation, to-do list, example data, and other documents
+* `/out/`: gitignored directory that some scripts assume contains `wmd`'s output data
 
 [log-directives]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/struct.EnvFilter.html#directives
 [repo]: https://github.com/fluffysquirrels/wikimedia-rs

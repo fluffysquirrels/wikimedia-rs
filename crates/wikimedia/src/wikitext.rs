@@ -13,6 +13,7 @@ use tokio::io::AsyncWriteExt;
 
 pub async fn convert_page_to_html(
     page: &dump::Page,
+    dump_name: &dump::DumpName,
     out_dir: &Path,
 ) -> Result<String> {
 
@@ -23,8 +24,9 @@ pub async fn convert_page_to_html(
     // Write Lua filter
 
     // TODO: Escape these as a Lua string literal.
-    let page_by_title: &str = "/enwiki/page/by-title/";
-    let category_by_name: &str = "/enwiki/category/by-name/";
+    let dump_name = &*dump_name.0;
+    let page_by_title = format!("/{dump_name}/page/by-title/");
+    let category_by_name = format!("/{dump_name}/category/by-name/");
 
     let lua_filter = format!(
         r##"

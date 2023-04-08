@@ -3,6 +3,7 @@ set -eu -o pipefail
 
 readonly repo_dir="$( cd -- $(dirname $(readlink -f ${BASH_SOURCE}))/..; pwd )"
 
+# Change directories so cargo picks up `.cargo/config` and rust-toolchain.toml
 cd "${repo_dir}"
 
 bin/build

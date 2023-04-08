@@ -5,9 +5,6 @@
 ## Must do before publishing
 
 * Documentation:
-    * Repo layout
-    * Comment in bin/{build,doc,test} about why we switch directory  
-      (to use .rust-toolchain.toml, .cargo/config.toml)
     * Documentation comments for all command args
     * Pre-requisites for `bin/publish`
         * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
@@ -15,7 +12,6 @@
     * Quick start from zero to web.
     * bin scripts
     * Top level module documentation
-    * Platforms tested
     * Architecture (basics of crate and module layout)
     * out-dir layout:
 
@@ -45,7 +41,8 @@
 * `--version latest` should fall back to the previous version if data is missing.
 * Update default logging for a good experience out of the box.
 
-* web should support alternative dumps with the correct URLs.
+* web should support alternative dumps (not just `enwiki`) with the correct URLs.
+    * Separate stores for each dump? Or one big store?
 
 * tracing-bunyan-formatter docs.rs config:
   ```toml
@@ -59,16 +56,12 @@
   ```
 
 * Document that import --limit is approximate.
-* `bin/publish` script: generate capnp rust, force clean git status,
-  run builds and tests, publish to crates.io.
 * Split source into several crates
     * Remove nightly `#![feature()]` use that isn't required.
     * Document crate split in the README.md
-* MirrorUrl newtype
 * Document bin name (`wmd`), CLI tool crate name (`wikimedia-downloader`),
   crate name (`wikimedia`), repo name (`wikimedia-rs`)
 * Support `import-dump` with no `--dump`, `--version`, `--job`?
-* Publish to crates.io.
 * Support `cargo install` wikimedia-downloader
     * Mirror selection?
 * sqlite error log in tracing https://docs.rs/rusqlite/latest/rusqlite/trace/fn.config_log.html
@@ -122,15 +115,16 @@
     * Batch import just the files the pages link to from API during import
     * Batch download all enwiki images during import
         * Possibly re-encode large images to save space
-* Clean up old files in http_cache.
-    * find http_cache -type f -mtime +5
+* Clean up old files
+    * In http_cache: `find http_cache -type f -mtime +5`
+    * In temp directories from crashes and bugs.
 
 ## Might do
 
 ### Features
 
 * Support compiling without `valuable`? Support compiling without nightly?
-* Option to recompress as LZ4 in Rust.
+* Option to recompress as LZ4 or zstd in Rust.
 * Android app
     *  https://developer.android.com/develop/ui/views/layout/webapps/webview#kotlin
     * https://gendignoux.com/blog/2022/10/24/rust-library-android.html#introduction-building-an-android-app-with-the-command-line-tools
@@ -154,8 +148,6 @@
     * https://dumps.wikimedia.org/other/enterprise_html/
 * Investigate sub-pages. Make sure you can view them in web and links to them work.
 * Performance
-    * get-store-page --out none takes 491s.
-    * 22714042 pages in enwiki-20230301-articlesdump
     * Cache MappedChunk in Arc<>, LRU, something.
     * Split a file on a literal and return it as a rayon paralleliterator, e.g. bz2 or lz4 multistream files, newline delimited text files. optionally include the literal (useful for multistream files). try it on wmd import! try it on csv and jsonl files.
 * Improve downloads
@@ -180,12 +172,13 @@
     * Restartable / checkpointed / idempotent
         * Skip duplicate pages.
         * Record completed job files, skip them on the next run.
-    * Progress reporting, ETA. https://docs.rs/progress-streams/latest/progress_streams/
     * One shot download and import, option to keep raw dumps or only
       have one .xml.bz2 on disk during import.
-    * In parallel
     * daemon or cronjob
-    * `<page> hash check`
+    * `<page>` sha1 hash check. It's the text between `<text>HERE</text>`,
+      XML entity decoded, then SHA1 summed, then encoded in base 36.
+        * `wmd get-dump-page --job-file out/job-multistream/zstd/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.zstd --compression zstd --out json-with-body --limit 1 | jq '.revision.text' -r | head -c -1 | sha1sum | awk '{print $1}'`
+        * === `SHA1_BASE36=$(zstdcat out/job-multistream/zstd/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.zstd| head -c 10000 | grep  -P -e  '(?<=<sha1\>)[^<]+(?=\</sha1\>)' -o | head -n1); python3.8 -c "print(hex(int(\"${SHA1_BASE36}\", base=36))[2:])"`
 * scheduled work
     * cron or a daemon that has a job scheduler
     * https://crates.io/crates/background-jobs-core
@@ -201,7 +194,6 @@
       warning notice that they are incomplete.
     * Finish indexing, all data is available, no warning.
 * Read wikimedia multistream dumps
-    * get-dump-page has `--offset`
     * get-multistream-* commands
         * Read index files to
           `(index_file_name,
@@ -238,7 +230,6 @@
            time the cronjob runs.
 * Render with `pandoc`
     * Rewrite image links
-    * TODO: Sanitise HTML
 * Clean up temp files on future runs
     * Left from failed downloads
     * Left from failed chunk writes to the store
@@ -247,15 +238,13 @@
     * Add chunk to store metadata, including path, ChunkId,
       count of pages, low page.id, high page.id.
     * async?
-    * Inspect chunks
-    * Chunk list
-    * Race between writing a chunk and committing the sled index.
+    * Race between writing a chunk and committing the index.
         * Keep a chunks WIP table in the index, insert chunk id,
           commit and flush, write the chunk to temp file, move the
           chunk to out dir, in one transaction write the index entries
           for the chunk and remove the chunk_id from the WIP table,
           commit and flush
-    * Try compression for chunks: LZ4 with https://github.com/PSeitz/lz4_flex
+    * Try compression for chunks: LZ4 or zstd
 * store::Index
     * Benchmark
         * Mutex around writer versus send commands to a thread.
@@ -391,6 +380,10 @@
 
 ### Code quality
 
+* End to end tests:
+    * Download a small dump job file
+    * Import the file
+    * View a page with `get-store-page` or `web`
 * Tidy up store::import(), it's too long.
 * Covering indexes for index operations?
 * newtype tuple structs
@@ -398,13 +391,11 @@
     * NamespaceId
     * PageTitle
     * PageSlug
-* Upstream Valuable support for tracing-bunyan-formatter:  https://github.com/LukeMathWalker/tracing-bunyan-formatter/issues/30
-* Replace `Box<dyn Iterator>` with Either enum.
-* Futures tidy up in web, get-store-page and store
-    * Try to use `left_future` and `right_future` instead of boxing
-    * Revisit removing async closures (in http and operations modules)
-* Split dump::local
-    * XML parsing to a different file.
+    * MirrorUrl
+* Revisit removing async closures (in http and operations modules)
+* Unit tests
+    * Dump parsing
+    * Wikitext conversion (including sanitisation, categories, weird wikitext pandoc hates)
 * Tidy up args to `operations::download_job_file`
 * Validate dump name, job name to have no relative paths, path traversal.
 * mod dump
@@ -413,8 +404,6 @@
     * Performance
 * Use anyhow macros: bail, format_err.
 * Split web server and cli tool?
-* Separate `clap` arg definitions from value types, e.g. create new DumpName, JobName tuple structs
-    * Separates concerns, creates potential for non-CLI uses.
 * Unify `get_dump_versions` date validation and `VersionSpecArg` date validation
 * Avoid boilerplate to record context variables in `download` subcommand.
     * Perhaps use `tracing::span` to record context variables, with

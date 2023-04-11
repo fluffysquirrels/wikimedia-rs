@@ -11,3 +11,7 @@ bin/build
 # Use `--release` so we re-use artifacts from standard builds
 
 cargo test --release --workspace --all-targets --locked
+
+# The completion command forces clap to check all the arguments for all comands.
+# In particular this fails when there are duplicate argument names.
+cargo run --release --bin wmd completion --shell zsh > /dev/null

@@ -198,7 +198,7 @@ async fn output_page(args: &Args, page: wmc::page::Reader<'_>) -> Result<()>
         },
         OutputType::Html => {
             let page = dump::Page::try_from(&page)?;
-            let html = wikitext::convert_page_to_html(&page, &args.common.dump_name(),
+            let html = wikitext::convert_page_to_html(&page, &args.common.store_dump_name(),
                                                       &*args.common.out_dir()).await?;
 
             if args.open {

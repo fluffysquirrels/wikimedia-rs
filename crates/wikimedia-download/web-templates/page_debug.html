@@ -164,16 +164,23 @@
 
 {% match wikimedia_url_base %}
   {% when Some with (url_base) %}
-<p><a class="header-links" href="{{ url_base }}/{{ slug }}">
-     This page on {{ dump_name }}
-</a></p>
+    <p><a class="header-links" href="{{ url_base }}/{{ slug }}">
+      This page on {{ dump_name }}
+    </a></p>
   {% when None %}
 {% endmatch %}
 
-{{ wikitext_html|safe }}
-
-<p><a class="header-links" href="?debug=true">
-     This page's debug info
+<p><a class="header-links" href="/{{ dump_name }}/page/by-id/{{ mediawiki_id }}">
+     This page by MediaWiki ID "{{ mediawiki_id }}"
 </a></p>
+<p><a class="header-links" href="/{{ dump_name }}/page/by-title/{{ slug }}">
+     This page by title "{{ slug }}"
+</a></p>
+<p><a class="header-links" href="/{{ dump_name }}/page/by-store-id/{{ store_page_id }}">
+     This page by page store ID "{{ store_page_id }}"
+</a></p>
+
+<p>Wikitext:</p>
+<pre><code>{{ wikitext }}</code></pre>
 
 {% endblock %}

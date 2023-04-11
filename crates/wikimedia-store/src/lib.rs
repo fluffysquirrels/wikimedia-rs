@@ -431,6 +431,10 @@ impl Store {
         self.index.get_category_pages(slug, page_mediawiki_id_lower_bound, limit)
     }
 
+    pub fn page_search(&self, query: &str, limit: Option<u64>) -> Result<Vec<index::Page>> {
+        self.index.page_search(query, limit)
+    }
+
     pub fn get_page_by_store_id(&self, id: StorePageId) -> Result<Option<MappedPage>> {
         self.chunk_store.get_page_by_store_id(id)
     }

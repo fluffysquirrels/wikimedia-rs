@@ -2,9 +2,71 @@
 
 ## WIP
 
+* Title search with FTS
+
 ## Must do before publishing
 
+* store::index
+    * After fiddling with optimise() and removing it from clear(),  
+      sqlite db doesn't shrink enough after clear.
+* wmd web
+    * Rewrite fragment links (we add a `wikitext-` prefix)
+    * Debug info
+        * ns_id
+        * namespace name
+    * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
+    * 404 page for no route match
+    * 404 page for pages by slug should link to enwiki.
+    * Error logging for WebError.
+    * Browsable
+    * Don't show error details to non-local hosts
+    * Separate web request log
+        * Optional apache format?
+        * JSON bunyan or similar
+    * Category list at the bottom of pages should render more nicely, maybe in a `<ul>`
+    * Category page should link to wikimedia site.
+    * Image links should be links
+    * PoisonError after panic on todo! in a page handler.
+        * Should exit, let the process supervisor restart us.
+    * https://github.com/tower-rs/tower-http
+    * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
+    * Error handling
+    * category by title should redirect to category url
+    * Weird markup showing up on some pages, e.g. <http://localhost:8089/simplewiki/page/by-title/New_York_City#wikitext-other_websites>, looks like data that's not hidden properly.  
+      Same with image captions (alt title on `<img />`, e.g. <http://localhost:8089/simplewiki/page/by-title/Amanda_Palmer>)
+    * Redirects
+    * Title search, click Category page, should take to category page list.
+    * Templates in wikitext
+        * https://www.mediawiki.org/wiki/Help:Templates
+        * from <http://localhost:8089/simplewiki/page/by-title/The_Matrix?debug=true>:
+          `<ref>{{cite web|url=http://www.sundaytimes.lk/080615/Mirror/mirror006.html|title= Behind Matrixism|author=Kotelawala, Himal|publisher= The Sunday Times Sri Lanka|date=14 June 2008|accessdate=2008-06-19}}</ref>`
+        * Geo tag templates
+            * Example: ` {{GER}}`
+            * See kung-fu panda release dates:  
+              <http://localhost:8089/simplewiki/page/by-title/Kung_Fu_Panda_(movie)>  
+              vs  
+              <https://simple.wikipedia.org/wiki/Kung_Fu_Panda_(movie)>
+        * Links rendering problem:
+            * From [Kung-Fu Panda](http://localhost:8089/simplewiki/page/by-title/Kung_Fu_Panda_(movie)):  
+              `* {{Official website|http://www.kungfupanda.com/}}
+               * {{IMDb title|0441773}}
+               * {{AllMovie movie|354676}}
+               * {{bcdb title|65706}}
+               * {{Rotten Tomatoes|kung_fu_panda}}
+               * {{metacritic film|kungfupanda}}
+               * {{mojo title|kungfupanda}}`
+
+    * /page/search should have a dump name, but then how will _base link to it (especially for rendering error pages)?
+    * Page 404 should have the title / ID on the page.
+    * tower tracing doesn't give enough fields, e.g.:
+      ```
+        2023-04-10T20:36:35.929383495Z DEBUG tower_http::trace::on_response: finished processing request, latency: 0 ms, status: 404
+        at /home/alex/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tower-http-0.4.0/src/trace/on_response.rs:254 on ThreadId(4)
+      ```
+
+* Fix --dump vs --store-dump. Feels like an ugly hack.
 * Documentation:
+    * Getting started: simplewiki
     * Documentation comments for all command args
     * Pre-requisites for `bin/publish`
         * cargo install tomato-toml <https://crates.io/crates/tomato-toml>
@@ -13,6 +75,7 @@
     * bin scripts
     * Top level module documentation
     * Architecture (basics of crate and module layout)
+    * import --limit is approximate
     * out-dir layout:
 
       ```
@@ -21,15 +84,16 @@
       out/dumps/enwiki/20230320
       out/dumps/enwiki/20230320/articlesmultistreamdump
       out/http_cache
-      out/store
-      out/store/chunks
-      out/store/chunks/articles-*.cap
-      out/store/chunks/lock
-      out/store/chunks/temp
-      out/store/index
-      out/store/index/index.db
-      out/store/index/index.db-shm
-      out/store/index/index.db-wal
+      out/stores
+      out/stores/enwiki
+      out/stores/enwiki/chunks
+      out/stores/enwiki/chunks/articles-*.cap
+      out/stores/enwiki/chunks/lock
+      out/stores/enwiki/chunks/temp
+      out/stores/enwiki/index
+      out/stores/enwiki/index/index.db
+      out/stores/enwiki/index/index.db-shm
+      out/stores/enwiki/index/index.db-wal
       ```
 
     * Logging to JSON, reading with `node-bunyan` or `bunyan-view`
@@ -42,7 +106,7 @@
 * Update default logging for a good experience out of the box.
 
 * web should support alternative dumps (not just `enwiki`) with the correct URLs.
-    * Separate stores for each dump? Or one big store?
+    * Separate stores for each dump (also allows to switch to a later version with a restart)
 
 * tracing-bunyan-formatter docs.rs config:
   ```toml
@@ -55,10 +119,8 @@
   rustc-args = ["--cfg", "tokio_unstable"]
   ```
 
-* Document that import --limit is approximate.
 * Split source into several crates
     * Remove nightly `#![feature()]` use that isn't required.
-    * Document crate split in the README.md
 * Document bin name (`wmd`), CLI tool crate name (`wikimedia-downloader`),
   crate name (`wikimedia`), repo name (`wikimedia-rs`)
 * Support `import-dump` with no `--dump`, `--version`, `--job`?
@@ -78,32 +140,13 @@
              },
            }`
 
-* web
-    * 404 page for no route match
-    * 404 page for pages by slug should link to enwiki.
-    * Error logging for WebError.
-    * Browsable
-    * Don't show error details to non-local hosts
-    * Separate web request log
-        * Optional apache format?
-        * JSON bunyan or similar
-
-    * PoisonError after panic on todo! in a page handler.
-        * Should exit, let the process supervisor restart us.
-    * https://github.com/tower-rs/tower-http
-    * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
-    * Error handling
-    * category by title should redirect to category url
 * Categories
     * web
         * web: add examples to wmd web index /
-        * web: page's category links go to the category page
         * web: page/by-name/Category:foo redirects to category/by-name/foo
-        * web: list of pages in category.
-            * 404 if no pages found.
+        * 404 if no pages found in a category
     * cli: list of categories.
     * cli: list of pages in category.
-* Title search with FTS
 * Non-unique titles!
 * Case insensitive titles
     * Redirect in web when title is not canonical.
@@ -123,6 +166,9 @@
 
 ### Features
 
+* Sync https://www.mediawiki.org/wiki/
+* What links here?
+* Namespace browsing
 * Support compiling without `valuable`? Support compiling without nightly?
 * Option to recompress as LZ4 or zstd in Rust.
 * Android app
@@ -380,6 +426,7 @@
 
 ### Code quality
 
+* More unit testing
 * End to end tests:
     * Download a small dump job file
     * Import the file
@@ -449,7 +496,6 @@
     * https://crates.io/crates/mediawiki_parser -- not as complete
     * https://www.mediawiki.org/wiki/Alternative_parsers
 * Probably not at this point: bin/build scripts for "release but with symbols"; "release but stripped and lto" -- might be useful, might not.
-* More unit testing
 * Add parent names to JSON output (e.g. dump name and job name in `FileInfoOutput`)?
 * https://crates.io/crates/opendal
 * https://github.com/moka-rs/moka : in process cache.

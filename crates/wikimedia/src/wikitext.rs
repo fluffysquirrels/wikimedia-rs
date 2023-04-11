@@ -65,10 +65,7 @@ $body$
         "#;
     fs::write(&*template_path, TEMPLATE.as_bytes())?;
 
-    let wikitext = page.revision.as_ref()
-        .and_then(|r| r.text.as_ref())
-        .map(|t| t.as_str())
-        .unwrap_or("");
+    let wikitext = page.revision_text().unwrap_or("");
 
     let mut child =
         tokio::process::Command::new("pandoc")

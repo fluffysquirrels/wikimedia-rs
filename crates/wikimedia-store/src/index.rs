@@ -10,7 +10,8 @@ use crate::{
 };
 use rusqlite::{config::DbConfig, Connection, OpenFlags, OptionalExtension, Transaction,
                TransactionBehavior};
-use sea_query::{ColumnDef, enum_def, Expr, InsertStatement, OnConflict, Query,
+use sea_query::{ColumnDef, enum_def, Expr, extension::sqlite::SqliteExpr,
+                Iden, InsertStatement, OnConflict, Order, Query,
                 SelectStatement, SimpleExpr, SqliteQueryBuilder, Table};
 use sea_query_rusqlite::{RusqliteBinder, RusqliteValues};
 use std::{
@@ -43,6 +44,7 @@ pub(crate) struct ImportBatchBuilder<'index> {
     category_batch: BatchInsert,
     page_batch: BatchInsert,
     page_categories_batch: BatchInsert,
+    page_fts_batch: BatchInsert,
 }
 
 struct BatchInsert {
@@ -62,6 +64,15 @@ pub struct Page {
     chunk_id: u64,
     page_chunk_index: u64,
     pub slug: String,
+}
+
+#[derive(Clone, Debug)]
+#[enum_def]
+#[allow(dead_code)] // The private fields are using in PageFtsIden (generated from this).
+struct PageFts {
+    title: String,
+    mediawiki_id: u64,
+    rank: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -90,7 +101,7 @@ impl Page {
 }
 
 impl Options {
-    pub fn build(self) -> Result<Index> {
+    pub(crate) fn build(self) -> Result<Index> {
         Index::new(self)
     }
 }
@@ -145,7 +156,7 @@ impl Index {
                              .extra("COLLATE NOCASE".to_string())
                              .primary_key())
                     .build(SqliteQueryBuilder)
-                + " WITHOUT ROWID",
+                    + " STRICT, WITHOUT ROWID",
 
                 // Table page
                 Table::create()
@@ -165,7 +176,8 @@ impl Index {
                             .text()
                             .not_null()
                             .extra("COLLATE NOCASE".to_string()))
-                    .build(SqliteQueryBuilder),
+                    .build(SqliteQueryBuilder)
+                    + " STRICT",
                 sea_query::Index::create()
                     .name("index_page_by_slug")
                     .if_not_exists()
@@ -173,6 +185,17 @@ impl Index {
                     .col(PageIden::Slug)
                     .unique()
                     .build(SqliteQueryBuilder),
+
+                // Table page_fts (with FTS5)
+                format!(r#"
+                    CREATE VIRTUAL TABLE IF NOT EXISTS {page_fts__table} USING fts5(
+                        {page_fts__title},
+                        {page_fts__mediawiki_id} UNINDEXED,
+                        prefix = 2, prefix = 3
+                    )
+                "#, page_fts__table = PageFtsIden::Table.to_string(),
+                    page_fts__title = PageFtsIden::Title.to_string(),
+                    page_fts__mediawiki_id = PageFtsIden::MediawikiId.to_string()),
 
                 // Table page_categories
                 Table::create()
@@ -189,7 +212,8 @@ impl Index {
                                      .col(PageCategoriesIden::MediawikiId)
                                      .col(PageCategoriesIden::CategorySlug)
                                      .unique())
-                    .build(SqliteQueryBuilder),
+                    .build(SqliteQueryBuilder)
+                    + " STRICT",
                 sea_query::Index::create()
                     .name("index_page_categories_by_category_slug")
                     .if_not_exists()
@@ -217,6 +241,10 @@ impl Index {
                     .if_exists()
                     .build(SqliteQueryBuilder),
                 Table::drop()
+                    .table(PageFtsIden::Table)
+                    .if_exists()
+                    .build(SqliteQueryBuilder),
+                Table::drop()
                     .table(PageIden::Table)
                     .if_exists()
                     .build(SqliteQueryBuilder),
@@ -232,7 +260,7 @@ impl Index {
         self.drop_all()
             .with_context(
                 || "in Index::clear() while dropping all objects")?;
-        self.optimise()?;
+        self.vacuum()?;
 
         // Drop old connection. Closing a sqlite connection seems to
         // help reduce DB size after dropping all the tables.
@@ -254,10 +282,28 @@ impl Index {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", target = "wikimedia_store::index::optimise",
+                          skip(self))]
     pub(crate) fn optimise(&mut self) -> Result<()> {
+        self.vacuum()?;
+        self.conn()?.execute("ANALYZE;", [])
+            .with_context(
+                || "in Index::optimise() while analysing the database")?;
+        self.conn()?.execute(&*format!(
+            "INSERT INTO {page_fts__table}({page_fts__table}) VALUES('optimize')",
+            page_fts__table = PageFtsIden::Table.to_string()
+            ), [])
+            .with_context(
+                || "in Index::optimise() while optimising the page_fts table")?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", target = "wikimedia_store::index::vacuum",
+                          skip(self))]
+    fn vacuum(&mut self) -> Result<()> {
         self.conn()?.execute("VACUUM;", [])
             .with_context(
-                || "in Index::optimise() while vacuuming the database")?;
+                || "in Index::vacuum()")?;
         Ok(())
     }
 
@@ -370,6 +416,46 @@ impl Index {
         self.single_row_select_to_store_page_id(query)
     }
 
+    pub(crate) fn page_search(&self, query: &str, limit: Option<u64>
+    ) -> Result<Vec<Page>> {
+
+        let limit = limit.unwrap_or(MAX_QUERY_LIMIT).min(MAX_QUERY_LIMIT);
+
+        let (sql, params) = Query::select()
+            .column((PageIden::Table, PageIden::MediawikiId))
+            .column((PageIden::Table, PageIden::ChunkId))
+            .column((PageIden::Table, PageIden::PageChunkIndex))
+            .column((PageIden::Table, PageIden::Slug))
+            .from(PageFtsIden::Table)
+            .inner_join(PageIden::Table,
+                        Expr::col((PageFtsIden::Table, PageFtsIden::MediawikiId))
+                            .equals((PageIden::Table, PageIden::MediawikiId)))
+            .and_where(Expr::col(PageFtsIden::Table).matches(Expr::value(query)))
+            .order_by((PageFtsIden::Table, PageFtsIden::Rank), Order::Asc)
+            .limit(limit)
+            .build_rusqlite(SqliteQueryBuilder);
+        let params2 = &*params.as_params();
+
+        let conn = self.conn()?;
+        let mut statement = conn.prepare_cached(&*sql)?;
+        let mut rows = statement.query(params2)?;
+
+        let mut out = Vec::<Page>::with_capacity(limit.try_into().expect("u64 to usize"));
+
+        while let Some(row) = rows.next()? {
+            let page = Page {
+                mediawiki_id: row.get(0)?,
+                chunk_id: row.get(1)?,
+                page_chunk_index: row.get(2)?,
+                slug: row.get(3)?,
+            };
+
+            out.push(page);
+        }
+
+        Ok(out)
+    }
+
     fn single_row_select_to_store_page_id(&self, select: SelectStatement
     ) -> Result<Option<StorePageId>>
     {
@@ -459,6 +545,14 @@ impl<'index> ImportBatchBuilder<'index> {
                        .on_conflict(OnConflict::new().do_nothing().to_owned())
                        .to_owned(),
                 index.opts.max_values_per_batch),
+            page_fts_batch: BatchInsert::new(
+                || Query::insert()
+                       .into_table(PageFtsIden::Table)
+                       .columns([PageFtsIden::MediawikiId,
+                                 PageFtsIden::Title])
+//                       .on_conflict(OnConflict::new().do_nothing().to_owned())
+                       .to_owned(),
+                index.opts.max_values_per_batch),
             page_categories_batch: BatchInsert::new(
                 || Query::insert()
                        .into_table(PageCategoriesIden::Table)
@@ -478,6 +572,11 @@ impl<'index> ImportBatchBuilder<'index> {
             store_page_id.chunk_id.0.into(),
             store_page_id.page_chunk_index.0.into(),
             page_slug.into()
+        ])?;
+
+        self.page_fts_batch.push_values([
+            page.id.into(),
+            (&page.title).into(),
         ])?;
 
         if let Some(ref rev) = page.revision {
@@ -507,6 +606,7 @@ impl<'index> ImportBatchBuilder<'index> {
         self.category_batch.execute_all(&txn)?;
         self.page_batch.execute_all(&txn)?;
         self.page_categories_batch.execute_all(&txn)?;
+        self.page_fts_batch.execute_all(&txn)?;
 
         txn.commit()?;
 

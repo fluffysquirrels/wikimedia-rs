@@ -22,8 +22,13 @@ pub struct CommonArgs {
     #[arg(from_global)]
     log_json: bool,
 
-    #[clap(flatten)]
-    dump_name: DumpNameArg,
+    /// The name of the store dump to use, e.g. `enwiki`.
+    ///
+    /// If not present tries to read the environment variable `WMD_STORE_DUMP`,
+    /// finally uses `enwiki` as a default.
+    #[arg(id = "store-dump", long = "store-dump", default_value = "enwiki",
+          env = "WMD_STORE_DUMP")]
+    store_dump_name: DumpName,
 
     /// The directory to save the program's output, including downloaded files and HTTP cache.
     ///
@@ -186,7 +191,7 @@ impl CommonArgs {
     }
 
     pub fn store_path(&self) -> PathBuf {
-        self.out_dir().join("stores").join(&*self.dump_name.value.0)
+        self.out_dir().join("stores").join(&*self.store_dump_name.0)
     }
 
     pub fn http_options(&self) -> Result<http::OptionsBuilder> {
@@ -196,13 +201,13 @@ impl CommonArgs {
                .to_owned())
     }
 
-    pub fn dump_name(&self) -> DumpName {
-        self.dump_name.value.clone()
+    pub fn store_dump_name(&self) -> DumpName {
+        self.store_dump_name.clone()
     }
 
     pub fn store_options(&self) -> Result<store::Options> {
         Ok(store::Options::default()
-               .dump_name(self.dump_name.value.clone())
+               .dump_name(self.store_dump_name.clone())
                .path(self.store_path())
                .to_owned())
     }

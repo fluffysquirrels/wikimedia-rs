@@ -168,3 +168,11 @@ impl FromStr for Version {
         }
     }
 }
+
+impl Page {
+    pub fn revision_text(&self) -> Option<&str> {
+        self.revision.as_ref()
+            .and_then(|r| r.text.as_ref())
+            .map(|t| t.as_str())
+    }
+}

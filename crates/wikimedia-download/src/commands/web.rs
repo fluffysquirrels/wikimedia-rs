@@ -41,6 +41,8 @@ pub struct Args {
     common: CommonArgs,
 }
 
+type WebResult<T> = StdResult<T, WebError>;
+
 mod state {
     use anyhow::{ensure, format_err};
     use std::sync::{Mutex, MutexGuard};
@@ -60,7 +62,7 @@ mod state {
 
             Ok(WebState {
                 store: Mutex::new(store),
-                store_dump_name: args.common.dump_name().clone(),
+                store_dump_name: args.common.store_dump_name().clone(),
 
                 // This moves `args`, so do it last.
                 args,
@@ -82,8 +84,13 @@ mod state {
             Ok(self.store.lock()
                    .map_err(|_err| format_err!("PoisonError unlocking Mutex in web module"))?)
         }
+
+        pub fn store_dump_name(&self) -> DumpName {
+            self.store_dump_name.clone()
+        }
     }
 }
+
 use state::WebState;
 
 #[tracing::instrument(level = "trace")]
@@ -95,9 +102,13 @@ pub async fn main(args: Args) -> Result<()> {
         .route("/:dump_name/category", routing::get(get_categories))
         .route("/:dump_name/category/by-name/:category_slug",
                routing::get(get_category_by_slug))
+
         .route("/:dump_name/page/by-id/:page_id", routing::get(get_page_by_id))
         .route("/:dump_name/page/by-store-id/:page_store_id", routing::get(get_page_by_store_id))
         .route("/:dump_name/page/by-title/:page_slug", routing::get(get_page_by_slug))
+
+        .route("/page/search", routing::get(get_page_search))
+
         .route("/test_panic", routing::get(|| async { panic!("Test panic") }))
 
         // .layer(
@@ -242,7 +253,7 @@ fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response {
 
 #[derive(askama::Template)]
 #[template(path = "index.html")]
-struct IndexHtml<'a>{
+struct IndexHtml<'a> {
     title: &'a str,
 }
 
@@ -272,7 +283,7 @@ async fn get_categories(
     State(state): State<Arc<WebState>>,
     Path(dump_name): Path<String>,
     Query(query): Query<GetCategoryQuery>
-) -> StdResult<impl IntoResponse, WebError> {
+) -> WebResult<impl IntoResponse> {
 
     let limit = query.limit.unwrap_or(store::MAX_QUERY_LIMIT).min(store::MAX_QUERY_LIMIT);
 
@@ -326,7 +337,7 @@ async fn get_category_by_slug(
     State(state): State<Arc<WebState>>,
     Path((dump_name, category_slug)): Path<(String, String)>,
     Query(query): Query<GetCategoryBySlugQuery>,
-) -> StdResult<impl IntoResponse, WebError> {
+) -> WebResult<impl IntoResponse> {
 
     let limit = query.limit.unwrap_or(store::MAX_QUERY_LIMIT).min(store::MAX_QUERY_LIMIT);
 
@@ -366,37 +377,44 @@ async fn get_category_by_slug(
     })
 }
 
-#[axum::debug_handler]
+#[derive(Deserialize)]
+struct SinglePageQuery {
+    debug: Option<bool>,
+}
+
 async fn get_page_by_id(
     State(state): State<Arc<WebState>>,
     Path((dump_name, page_id)): Path<(String, u64)>,
-) -> StdResult<impl IntoResponse, WebError> {
+    Query(query): Query<SinglePageQuery>,
+) -> WebResult<impl IntoResponse> {
 
     let page = state.store(&*dump_name)?.get_page_by_mediawiki_id(page_id)?;
 
-    response_from_mapped_page(page, &*state).await
+    response_from_mapped_page(page, &*state, query).await
 }
 
 async fn get_page_by_store_id(
     State(state): State<Arc<WebState>>,
     Path((dump_name, page_store_id)): Path<(String, String)>,
-) -> StdResult<impl IntoResponse, WebError> {
+    Query(query): Query<SinglePageQuery>,
+) -> WebResult<impl IntoResponse> {
 
     let page_store_id = page_store_id.parse::<store::StorePageId>()?;
 
     let page = state.store(&*dump_name)?.get_page_by_store_id(page_store_id)?;
 
-    response_from_mapped_page(page, &*state).await
+    response_from_mapped_page(page, &*state, query).await
 }
 
 async fn get_page_by_slug(
     State(state): State<Arc<WebState>>,
     Path((dump_name, page_slug)): Path<(String, String)>,
-) -> StdResult<impl IntoResponse, WebError> {
+    Query(query): Query<SinglePageQuery>,
+) -> WebResult<impl IntoResponse> {
 
     let page = state.store(&*dump_name)?.get_page_by_slug(&*page_slug)?;
 
-    response_from_mapped_page(page, &*state).await
+    response_from_mapped_page(page, &*state, query).await
 }
 
 #[derive(askama::Template)]
@@ -404,17 +422,33 @@ async fn get_page_by_slug(
 struct PageHtml {
     title: String,
 
-    mediawiki_id: u64,
     slug: String,
-    store_page_id: StorePageId,
     wikitext_html: String,
 
     dump_name: String,
     wikimedia_url_base: Option<String>,
 }
 
-fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
-) -> impl Future<Output = StdResult<Response, WebError>> + Send {
+#[derive(askama::Template)]
+#[template(path = "page_debug.html")]
+struct PageDebugHtml {
+    title: String,
+
+    mediawiki_id: u64,
+    slug: String,
+    store_page_id: StorePageId,
+
+    wikitext: String,
+
+    dump_name: String,
+    wikimedia_url_base: Option<String>,
+}
+
+fn response_from_mapped_page(
+    page: Option<store::MappedPage>,
+    state: &WebState,
+    query: SinglePageQuery,
+) -> impl Future<Output = WebResult<Response>> + Send {
     let Some(page) = page else {
         return Either::Left(Either::Left(future::ok(_404_response(&"Page not found"))));
     };
@@ -431,29 +465,94 @@ fn response_from_mapped_page(page: Option<store::MappedPage>, state: &WebState
 
     let common_args = state.args().common.clone();
     let dump_name = page.dump_name();
+    let wikimedia_url_base = dump::dump_name_to_wikimedia_url_base(&dump_name);
 
-    Either::Right(async move {
-        let wikitext_html = wikitext::convert_page_to_html(&page_dump,
-                                                           &dump_name,
-                                                           &*common_args.out_dir()).await?;
+    if query.debug.unwrap_or(false) {
+        let wikitext = page_dump.revision_text().unwrap_or("").to_string();
         let slug = slug::title_to_slug(&*page_dump.title);
-        let dump_name = page.dump_name();
-        let html = PageHtml {
-            title: page_dump.title,
 
-            mediawiki_id: page_dump.id,
-            slug,
-            store_page_id,
-            wikitext_html,
+        Either::Right(Either::Left({
+            let html = PageDebugHtml {
+                title: page_dump.title,
 
-            wikimedia_url_base: match &*dump_name.0 {
-                "enwiki" => Some("https://en.wikipedia.org/wiki".to_string()),
-                _ => None,
-            },
+                mediawiki_id: page_dump.id,
+                slug,
+                store_page_id,
+                wikitext,
 
-            // This moves dump_name, do it after matching on dump_name for wikimedia_url_base.
-            dump_name: dump_name.0,
-        };
-        Ok(html.into_response())
+                wikimedia_url_base,
+
+                // This moves dump_name, do it last.
+                dump_name: dump_name.0,
+            };
+            future::ok(html.into_response())
+        }))
+    } else {
+        Either::Right(Either::Right(async move {
+            let wikitext_html = wikitext::convert_page_to_html(&page_dump,
+                                                               &dump_name,
+                                                               &*common_args.out_dir()).await?;
+            let slug = slug::title_to_slug(&*page_dump.title);
+            let html = PageHtml {
+                title: page_dump.title,
+
+                slug,
+                wikitext_html,
+
+                wikimedia_url_base,
+
+                // This moves dump_name, do it last.
+                dump_name: dump_name.0,
+            };
+            Ok(html.into_response())
+        }))
+    }
+}
+
+
+
+#[derive(Deserialize)]
+struct PageSearchQuery {
+    query: Option<String>,
+}
+
+#[derive(askama::Template)]
+#[template(path = "page_search.html")]
+struct PageSearchHtml {
+    title: String,
+    dump_name: String,
+
+    query: Option<String>,
+
+    pages: Vec<index::Page>,
+    show_more_href: Option<String>,
+}
+
+async fn get_page_search(
+    State(state): State<Arc<WebState>>,
+    Query(query): Query<PageSearchQuery>,
+) -> WebResult<impl IntoResponse> {
+
+    let dump_name = state.store_dump_name();
+    let Some(query_string) = query.query else {
+        return Ok(PageSearchHtml {
+                title: "Page search".to_string(),
+                dump_name: dump_name.0,
+                query: None,
+                pages: Vec::with_capacity(0),
+                show_more_href: None,
+            });
+    };
+
+    let store = state.store(&*dump_name.0)?;
+
+    let pages = store.page_search(&*query_string, None /* limit, TODO */)?;
+
+    Ok(PageSearchHtml {
+        title: "Page search".to_string(),
+        dump_name: dump_name.0,
+        query: Some(query_string),
+        pages,
+        show_more_href: None, // TODO
     })
 }

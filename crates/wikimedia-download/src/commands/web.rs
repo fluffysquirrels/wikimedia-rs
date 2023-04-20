@@ -434,6 +434,7 @@ struct PageHtml {
 struct PageDebugHtml {
     title: String,
 
+    ns_id: u64,
     mediawiki_id: u64,
     slug: String,
     store_page_id: StorePageId,
@@ -475,6 +476,7 @@ fn response_from_mapped_page(
             let html = PageDebugHtml {
                 title: page_dump.title,
 
+                ns_id: page_dump.ns_id,
                 mediawiki_id: page_dump.id,
                 slug,
                 store_page_id,

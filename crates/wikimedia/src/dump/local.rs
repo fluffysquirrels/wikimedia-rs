@@ -32,7 +32,7 @@ use std::{
     result::Result as StdResult,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::AtomicU64,
     },
     str::FromStr,
 };

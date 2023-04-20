@@ -6,9 +6,6 @@
 
 ## Must do before publishing
 
-* store::index
-    * After fiddling with optimise() and removing it from clear(),  
-      sqlite db doesn't shrink enough after clear.
 * wmd web
     * Rewrite fragment links (we add a `wikitext-` prefix)
     * Debug info

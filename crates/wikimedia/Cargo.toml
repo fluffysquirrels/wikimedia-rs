@@ -31,7 +31,6 @@ maplit.workspace = true
 mime.workspace = true
 natord.workspace = true
 once_cell.workspace = true
-progress-streams.workspace = true
 quick-xml.workspace = true
 rand.workspace = true
 rayon.workspace = true

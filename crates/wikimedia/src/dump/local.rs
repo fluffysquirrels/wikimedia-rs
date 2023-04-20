@@ -8,6 +8,7 @@ use clap::{
 use crate::{
     dump::types::*,
     Error,
+    ProgressReader,
     Result,
     UserRegex,
     util::{
@@ -17,7 +18,6 @@ use crate::{
     wikitext,
 };
 use iterator_ext::IteratorExt;
-use progress_streams::ProgressReader;
 use quick_xml::events::Event;
 use rayon::{
     prelude::*,
@@ -266,17 +266,7 @@ impl FileSpec {
             let _ = file_read.seek(std::io::SeekFrom::Start(offset))?;
         }
 
-        let source_bytes_read = Arc::new(AtomicU64::new(0));
-
-        let source_bytes_read2 = source_bytes_read.clone();
-        let prog_read = ProgressReader::new(
-            file_read,
-            move |read_len| {
-                source_bytes_read2.fetch_add(
-                    read_len.try_into().expect("usize as u64"),
-                    Ordering::SeqCst);
-            });
-
+        let (prog_read, source_bytes_read) = ProgressReader::new(file_read);
         let file_bufread = BufReader::with_capacity(128 * 1024, prog_read);
 
         fn into_page_iter<T>(inner: T
@@ -299,15 +289,8 @@ impl FileSpec {
             Compression::Bzip2 => {
                 let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
 
-                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
-                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
-                let uncompressed_prog_read = ProgressReader::new(
-                    bzip_decoder,
-                    move |read_len| {
-                        uncompressed_bytes_read2.fetch_add(
-                            read_len.try_into().expect("usize as u64"),
-                            Ordering::SeqCst);
-                    });
+                let (uncompressed_prog_read, uncompressed_bytes_read) =
+                    ProgressReader::new(bzip_decoder);
 
                 let bzip_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
                 (uncompressed_bytes_read, into_page_iter(bzip_bufread))
@@ -315,15 +298,8 @@ impl FileSpec {
             Compression::LZ4 => {
                 let lz4_decoder = lz4_flex::frame::FrameDecoder::new(file_bufread);
 
-                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
-                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
-                let uncompressed_prog_read = ProgressReader::new(
-                    lz4_decoder,
-                    move |read_len| {
-                        uncompressed_bytes_read2.fetch_add(
-                            read_len.try_into().expect("usize as u64"),
-                            Ordering::SeqCst);
-                    });
+                let (uncompressed_prog_read, uncompressed_bytes_read) =
+                    ProgressReader::new(lz4_decoder);
 
                 let lz4_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
                 (uncompressed_bytes_read, into_page_iter(lz4_bufread))
@@ -331,15 +307,8 @@ impl FileSpec {
             Compression::Zstd => {
                 let zstd_decoder = zstd::stream::read::Decoder::with_buffer(file_bufread)?;
 
-                let uncompressed_bytes_read = Arc::new(AtomicU64::new(0));
-                let uncompressed_bytes_read2 = uncompressed_bytes_read.clone();
-                let uncompressed_prog_read = ProgressReader::new(
-                    zstd_decoder,
-                    move |read_len| {
-                        uncompressed_bytes_read2.fetch_add(
-                            read_len.try_into().expect("usize as u64"),
-                            Ordering::SeqCst);
-                    });
+                let (uncompressed_prog_read, uncompressed_bytes_read) =
+                    ProgressReader::new(zstd_decoder);
 
                 let capacity = zstd::stream::read::Decoder::<'_, std::io::Empty>
                                    ::recommended_output_size();

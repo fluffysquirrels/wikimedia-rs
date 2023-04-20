@@ -11,6 +11,7 @@ mod lazy_regex;
 pub mod util;
 
 // The rest of these sub-modules are in alphabetical order.
+mod progress_reader;
 pub mod dump;
 pub mod http;
 pub mod slug;
@@ -18,6 +19,7 @@ mod temp_dir;
 mod user_regex;
 pub mod wikitext;
 
+pub use progress_reader::ProgressReader;
 pub use temp_dir::TempDir;
 pub use user_regex::UserRegex;
 

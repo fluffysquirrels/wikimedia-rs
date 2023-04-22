@@ -36,4 +36,15 @@ struct Revision @0x8498a9bbaf5857f4 {
     }
   }
   text @1 :Text;
+  sha1 :union {
+    none @6 :Void;
+    some :group {
+      # Each hash* field is a portion of the 20 byte SHA1 hash,
+      # The hash is encoded as a big-endian value, with each
+      # field named with the offset of the portion in the full hash value.
+      hash0 @7 :UInt64;
+      hash8 @8 :UInt64;
+      hash16 @9 :UInt32;
+    }
+  }
 }

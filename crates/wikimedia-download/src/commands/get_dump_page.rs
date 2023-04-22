@@ -18,7 +18,7 @@ pub struct Args {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 enum OutputType {
-    /// Format the pages as JSON, with no body text.
+    /// Format the pages as JSON, with no body text. Does include the revision's  categories list.
     Json,
 
     /// Format the pages as JSON, including the body text.

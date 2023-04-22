@@ -2,6 +2,7 @@
 
 ## WIP
 
+* page.revision.sha1 round trip: dump -> dump::page -> chunk::page -> dump::page -> web
 * Title search with FTS
 
 ## Must do before publishing

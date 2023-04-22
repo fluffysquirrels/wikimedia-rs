@@ -34,7 +34,7 @@ use wikimedia::{
     Result,
     TempDir,
     util::{
-        fmt::Bytes,
+        fmt::{Bytes, Sha1Hash},
         IteratorExtSend,
     },
     try2,
@@ -455,6 +455,22 @@ impl<'lock> Builder<'lock> {
                         }
                     }
                 }
+
+                {
+                    let mut sha1_build = revision_cap.reborrow().init_sha1();
+                    match revision.sha1 {
+                        None => sha1_build.set_none(()),
+                        Some(sha1) => {
+                            let mut sha1_some_build = sha1_build.init_some();
+                            sha1_some_build.set_hash0(
+                                u64::from_be_bytes(sha1.0[0..8].try_into().unwrap()));
+                            sha1_some_build.set_hash8(
+                                u64::from_be_bytes(sha1.0[8..16].try_into().unwrap()));
+                            sha1_some_build.set_hash16(
+                                u32::from_be_bytes(sha1.0[16..20].try_into().unwrap()));
+                        }
+                    }
+                }
             }
         }
 
@@ -604,11 +620,24 @@ pub fn convert_store_page_to_dump_page_without_body<'a, 'b>(
                 },
                 _ => None,
             };
+            let rev_sha1 = match rev_cap.reborrow().get_sha1().which() {
+                Ok(wmc::revision::sha1::Which::Some(sha1_cap)) => {
+                    let mut bytes = [0u8; 20];
+                    bytes[0 .. 8].copy_from_slice(
+                        &*sha1_cap.reborrow().get_hash0() .to_be_bytes().as_slice());
+                    bytes[8 ..16].copy_from_slice(
+                        &*sha1_cap.reborrow().get_hash8() .to_be_bytes().as_slice());
+                    bytes[16..20].copy_from_slice(
+                        &*sha1_cap.reborrow().get_hash16().to_be_bytes().as_slice());
+                    Some(Sha1Hash(bytes))
+                },
+                _ => None,
+            };
             Some(dump::Revision {
                 id: rev_cap.get_id(),
                 parent_id: rev_parent_id,
                 timestamp: rev_timestamp,
-                sha1: None, // TODO
+                sha1: rev_sha1,
 
                 categories: vec![],
                 text: None,

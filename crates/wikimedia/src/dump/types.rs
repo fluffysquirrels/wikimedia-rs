@@ -1,9 +1,11 @@
 //! Data types used in Wikimedia data dumps and their metadata.
 
+use chrono::{DateTime, FixedOffset};
 use crate::{
     Error,
     Result,
     slug,
+    util::fmt::Sha1Hash,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -96,7 +98,10 @@ pub struct Page {
 #[derive(Clone, Debug, Serialize)]
 pub struct Revision {
     pub id: u64,
+    pub parent_id: Option<u64>,
+    pub timestamp: Option<DateTime<FixedOffset>>,
     pub text: Option<String>,
+    pub sha1: Option<Sha1Hash>,
     pub categories: Vec<CategoryName>,
 }
 

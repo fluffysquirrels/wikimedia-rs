@@ -7,11 +7,14 @@
 ## Must do before publishing
 
 * wmd web
+    * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
+    * category by title should redirect to category url
+    * Redirects
+    * Title search, click Category page, should take to category page list.
     * Rewrite fragment links (we add a `wikitext-` prefix)
     * Debug info
         * ns_id
         * namespace name
-    * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
     * 404 page for no route match
     * 404 page for pages by slug should link to enwiki.
     * Error logging for WebError.
@@ -28,11 +31,6 @@
     * https://github.com/tower-rs/tower-http
     * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
     * Error handling
-    * category by title should redirect to category url
-    * Weird markup showing up on some pages, e.g. <http://localhost:8089/simplewiki/page/by-title/New_York_City#wikitext-other_websites>, looks like data that's not hidden properly.  
-      Same with image captions (alt title on `<img />`, e.g. <http://localhost:8089/simplewiki/page/by-title/Amanda_Palmer>)
-    * Redirects
-    * Title search, click Category page, should take to category page list.
     * Templates in wikitext
         * https://www.mediawiki.org/wiki/Help:Templates
         * from <http://localhost:8089/simplewiki/page/by-title/The_Matrix?debug=true>:
@@ -52,6 +50,8 @@
                * {{Rotten Tomatoes|kung_fu_panda}}
                * {{metacritic film|kungfupanda}}
                * {{mojo title|kungfupanda}}`
+        * Weird markup showing up on some pages, e.g. <http://localhost:8089/simplewiki/page/by-title/New_York_City#wikitext-other_websites>, looks like data that's not hidden properly.  
+          Same with image captions (alt title on `<img />`, e.g. <http://localhost:8089/simplewiki/page/by-title/Amanda_Palmer>)
 
     * /page/search should have a dump name, but then how will _base link to it (especially for rendering error pages)?
     * Page 404 should have the title / ID on the page.

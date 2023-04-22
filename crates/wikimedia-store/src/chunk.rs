@@ -11,6 +11,7 @@ use capnp::{
               TypedReader},
     serialize::BufferSegments,
 };
+use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use crossbeam_utils::CachePadded;
 use memmap2::Mmap;
 use serde::Serialize;
@@ -431,8 +432,28 @@ impl<'lock> Builder<'lock> {
             if let Some(revision) = page.revision {
                 let mut revision_cap = page_cap.init_revision();
                 revision_cap.set_id(revision.id);
+
                 if let Some(text) = revision.text {
-                    revision_cap.set_text(text.as_str());
+                    revision_cap.reborrow().set_text(text.as_str());
+                }
+
+                {
+                    let mut parent_id_build = revision_cap.reborrow().init_parent_id();
+                    match revision.parent_id {
+                        None => parent_id_build.set_none(()),
+                        Some(parent_id) => parent_id_build.set_some(parent_id),
+                    }
+                }
+
+                {
+                    let mut ts_build = revision_cap.reborrow().init_timestamp();
+                    match revision.timestamp {
+                        None => ts_build.set_none(()),
+                        Some(dt) => {
+                            let mut ts_some_build = ts_build.init_some();
+                            ts_some_build.set_utc_timestamp_secs(dt.naive_utc().timestamp());
+                        }
+                    }
                 }
             }
         }
@@ -570,18 +591,27 @@ pub fn convert_store_page_to_dump_page_without_body<'a, 'b>(
         title: page_cap.get_title()?.to_string(),
         revision: if page_cap.has_revision() {
             let rev_cap = page_cap.get_revision()?;
-            let rev_text = if rev_cap.has_text() {
-                Some(rev_cap.get_text()?.to_string())
-            } else {
-                None
+            let rev_parent_id = match rev_cap.reborrow().get_parent_id().which() {
+                Ok(wmc::revision::parent_id::Which::Some(v)) => Some(v),
+                _ => None,
+            };
+            let rev_timestamp = match rev_cap.reborrow().get_timestamp().which() {
+                Ok(wmc::revision::timestamp::Which::Some(ts)) => {
+                    let secs: i64 = ts.get_utc_timestamp_secs();
+                    let ts_utc = Utc.timestamp_opt(secs, /* nsecs: */ 0).single();
+                    let ts_offset = ts_utc.map(|ts| DateTime::<FixedOffset>::from(ts));
+                    ts_offset
+                },
+                _ => None,
             };
             Some(dump::Revision {
                 id: rev_cap.get_id(),
-                categories: match rev_text {
-                    Some(ref text) => wikitext::parse_categories(text.as_str()),
-                    None => Vec::with_capacity(0),
-                },
-                text: rev_text,
+                parent_id: rev_parent_id,
+                timestamp: rev_timestamp,
+                sha1: None, // TODO
+
+                categories: vec![],
+                text: None,
             })
         } else {
             None

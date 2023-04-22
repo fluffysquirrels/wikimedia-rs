@@ -1,6 +1,7 @@
 //! Read local copies of Wikimedia dump files.
 
 use anyhow::format_err;
+use chrono::{DateTime, FixedOffset};
 use clap::{
     builder::PossibleValue,
     ValueEnum,
@@ -12,7 +13,7 @@ use crate::{
     Result,
     UserRegex,
     util::{
-        fmt::Bytes,
+        fmt::{Bytes, Sha1Hash},
         IteratorExtSend,
     },
     wikitext,
@@ -376,8 +377,10 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
 
     fn next(&mut self) -> Option<Result<Page>> {
         loop {
+            let pos = self.xml_read.buffer_position();
             match try_iter!(self.xml_read.read_event_into(&mut self.buf)) {
                 Event::Start(b) if b.name().as_ref() == b"page" => {
+                    let page_start_pos = pos;
                     self.buf.clear();
                     let mut page_title: Option<String> = None;
                     let mut page_ns_id: Option<u64> = None;
@@ -403,16 +406,44 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
                                                       b"id")).parse::<u64>()));
                             },
                             Event::Start(b) if b.name().as_ref() == b"revision" => {
-                                let mut revision_text: Option<String> = None;
                                 let mut revision_id: Option<u64> = None;
+                                let mut revision_parent_id: Option<u64> = None;
+                                let mut revision_timestamp: Option<DateTime<FixedOffset>> = None;
+                                let mut revision_text: Option<String> = None;
+                                let mut revision_sha1: Option<Sha1Hash> = None;
                                 loop {
                                     match try_iter!(self.xml_read.read_event_into(&mut self.buf)) {
-                                        Event::Start(b) if b.name().as_ref() == b"id" => {
+                                        // Skip <id> if revision_id is already Some(_).
+                                        // This ignores <contributor><id>_</id></contributor>
+                                        // in a hacky way without actually handling
+                                        // an element stack properly.
+                                        Event::Start(b) if b.name().as_ref() == b"id"
+                                                           && revision_id.is_none() => {
                                             revision_id = Some(
                                                 try_iter!(try_iter!(
                                                     take_element_text(&mut self.xml_read,
                                                                       &mut self.buf,
                                                                       b"id")).parse::<u64>()));
+                                        },
+                                        Event::Start(b) if b.name().as_ref() == b"parentid"
+                                                           && revision_parent_id.is_none() => {
+                                            revision_parent_id = Some(
+                                                try_iter!(try_iter!(
+                                                    take_element_text(&mut self.xml_read,
+                                                                      &mut self.buf,
+                                                                      b"parentid"))
+                                                          .parse::<u64>()));
+                                        },
+                                        Event::Start(b) if b.name().as_ref() == b"timestamp"
+                                                           && revision_timestamp.is_none() => {
+                                            let s =
+                                                try_iter!(
+                                                    take_element_text(&mut self.xml_read,
+                                                                      &mut self.buf,
+                                                                      b"timestamp"));
+                                            let dt = try_iter!(
+                                                DateTime::<FixedOffset>::parse_from_rfc3339(&*s));
+                                            revision_timestamp = Some(dt);
                                         },
                                         Event::Start(b) if b.name().as_ref() == b"text" => {
                                             revision_text = Some(
@@ -420,19 +451,52 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
                                                                          &mut self.buf,
                                                                          b"text")));
                                         },
+                                        Event::Start(b) if b.name().as_ref() == b"sha1" => {
+                                            let s = try_iter!(take_element_text(&mut self.xml_read,
+                                                                         &mut self.buf,
+                                                                         b"sha1"));
+                                            revision_sha1 = Some(
+                                                try_iter!(Sha1Hash::from_base36_str(&*s)));
+                                        },
                                         Event::End(b) if b.name().as_ref() == b"revision" => break,
                                         _ => {},
                                     }
+                                } // end of loop over child nodes of <revision />
+
+                                let revision_id = try_iter!(
+                                    revision_id.ok_or(format_err!("No revision id \
+                                                                   page_id={page_id:?} \
+                                                                   page_title={page_title:?}")));
+                                match (revision_text.as_ref(), revision_sha1.as_ref()) {
+                                    (Some(text), Some(expected_sha1)) => {
+                                        let calculated_sha1 =
+                                            Sha1Hash::calculate_from_bytes(text.as_bytes());
+                                        if *expected_sha1 != calculated_sha1 {
+                                            tracing::warn!(
+                                                %expected_sha1,
+                                                %calculated_sha1,
+                                                %revision_id,
+                                                ?page_title,
+                                                ?page_id,
+                                                page_start_pos,
+                                                "Dump page revision text SHA1 hash did not \
+                                                 match expected.");
+                                        }
+                                    },
+                                    (_, _) => {},
                                 }
                                 revision = Some(Revision {
-                                    id: try_iter!(revision_id.ok_or(
-                                            format_err!("No revision id"))),
+                                    id: revision_id,
+                                    parent_id: revision_parent_id,
+                                    timestamp: revision_timestamp,
                                     categories:
                                         match revision_text {
                                             None => vec![],
                                             Some(ref text) =>
                                                 wikitext::parse_categories(text.as_str()),
                                         },
+                                    sha1: revision_sha1,
+                                    // This moves revision_text, so do it last.
                                     text: revision_text,
                                 });
                             },

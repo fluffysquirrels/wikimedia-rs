@@ -8,8 +8,14 @@
 //!
 //! [new type idiom]: https://doc.rust-lang.org/rust-by-example/generics/new_types.html
 
+use anyhow::bail;
+use crate::Result;
+use num_bigint::BigUint;
+use num_traits::Num;
+use sha1::{Digest, Sha1};
 use std::{
     fmt::{Debug, Display, Write},
+    result::Result as StdResult,
     time::Duration as StdDuration,
 };
 use valuable::{
@@ -55,6 +61,32 @@ const SECOND: StdDuration = StdDuration::from_secs(1);
 const MINUTE: StdDuration = StdDuration::from_secs(60);
 const HOUR:   StdDuration = StdDuration::from_secs(60 * 60);
 
+impl Sha1Hash {
+    pub fn from_base36_str(s: &str) -> Result<Sha1Hash> {
+        let bu = BigUint::from_str_radix(s, 36)?;
+        let bits = bu.bits();
+        if bits > 160 {
+            bail!("Sha1Hash::from_base36_str error: too many bits in result.\n\
+                   -   bits={bits}\n\
+                   -   s='{s}'");
+        }
+        let mut bytes: Vec<u8> = bu.to_bytes_le();
+        assert!(bytes.len() <= 20);
+        bytes.resize(/* new_len: */ 20 , /* value: */ 0_u8);
+        bytes.reverse();
+        let bytes_array = <[u8; 20]>::try_from(bytes)
+                                     .expect("bytes to be correct length by construction");
+        Ok(Sha1Hash(bytes_array))
+    }
+
+    pub fn calculate_from_bytes(s: &[u8]) -> Sha1Hash {
+        let mut sha1_hasher = Sha1::new();
+        sha1_hasher.update(s);
+        let sha1_bytes: [u8; 20] = sha1_hasher.finalize().into();
+        Sha1Hash(sha1_bytes)
+    }
+}
+
 impl Debug for Sha1Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Sha1Hash({self})")
@@ -85,6 +117,68 @@ impl Valuable for Sha1Hash {
 impl Tuplable for Sha1Hash {
     fn definition(&self) -> TupleDef {
         TupleDef::new_static(1)
+    }
+}
+
+impl serde::Serialize for Sha1Hash {
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+        where S: serde::Serializer
+    {
+        let serializable = valuable_serde::Serializable::new(self);
+        serializable.serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod sha1_hash_tests {
+    use super::Sha1Hash;
+
+    #[test]
+    fn example() {
+/* Example page XML:
+"""
+  <page>
+    <title>AbacuS</title>
+    <ns>0</ns>
+    <id>46</id>
+    <redirect title="Abacus" />
+    <revision>
+      <id>783822039</id>
+      <parentid>46448989</parentid>
+      <timestamp>2017-06-04T21:45:26Z</timestamp>
+      <contributor>
+        <username>Tom.Reding</username>
+        <id>9784415</id>
+      </contributor>
+      <minor />
+      <comment>+{{R category shell}} using [[Project:AWB|AWB]]</comment>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="74" xml:space="preserve">#REDIRECT [[Abacus]]
+ 
+{{Redirect category shell|1=
+{{R from CamelCase}}
+}}</text>
+      <sha1>tdzgf1eon4l1v0cjer5nnwg0y1enxye</sha1>
+    </revision>
+  </page>
+"""
+*/
+
+        let text =
+"#REDIRECT [[Abacus]]
+
+{{Redirect category shell|1=
+{{R from CamelCase}}
+}}";
+        assert_eq!(text.len(), 74);
+
+        let sha1_base36_str = "tdzgf1eon4l1v0cjer5nnwg0y1enxye";
+        let sha1_expected = Sha1Hash::from_base36_str(sha1_base36_str).expect("from_base36_str");
+
+        let sha1_calculated = Sha1Hash::calculate_from_bytes(text.as_bytes());
+
+        assert_eq!(sha1_calculated, sha1_expected);
     }
 }
 
@@ -129,7 +223,7 @@ impl Structable for Bytes {
 }
 
 impl serde::Serialize for Bytes {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
         where S: serde::Serializer
     {
         let serializable = valuable_serde::Serializable::new(self);

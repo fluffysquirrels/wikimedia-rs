@@ -29,6 +29,7 @@ use wikimedia::{
     dump::{self, CategorySlug},
     slug,
     Result,
+    util::fmt::Sha1Hash,
     wikitext,
 };
 use wikimedia_store::{self as store, index, StorePageId};
@@ -439,6 +440,11 @@ struct PageDebugHtml {
     slug: String,
     store_page_id: StorePageId,
 
+    revision_id: Option<u64>,
+    revision_parent_id: Option<u64>,
+    revision_timestamp_string: Option<String>,
+    revision_text_sha1: Option<Sha1Hash>,
+
     wikitext: String,
 
     dump_name: String,
@@ -481,6 +487,15 @@ fn response_from_mapped_page(
                 slug,
                 store_page_id,
                 wikitext,
+
+                revision_id: page_dump.revision.as_ref().map(|r| r.id),
+                revision_parent_id: page_dump.revision.as_ref().and_then(|r| r.parent_id),
+                revision_timestamp_string:
+                    page_dump.revision.as_ref().and_then(|r| r.timestamp)
+                             .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs,
+                                                          /* use_z: */ true)),
+                revision_text_sha1:
+                    page_dump.revision.as_ref().and_then(|r| r.sha1),
 
                 wikimedia_url_base,
 

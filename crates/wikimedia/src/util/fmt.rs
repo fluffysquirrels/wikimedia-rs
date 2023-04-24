@@ -85,6 +85,15 @@ impl Sha1Hash {
         let sha1_bytes: [u8; 20] = sha1_hasher.finalize().into();
         Sha1Hash(sha1_bytes)
     }
+
+    pub fn to_hex_string(&self) -> String {
+        hex::encode(self.0)
+    }
+
+    pub fn to_base36_string(&self) -> String {
+        let bu = BigUint::from_bytes_be(self.0.as_slice());
+        bu.to_str_radix(36)
+    }
 }
 
 impl Debug for Sha1Hash {
@@ -95,7 +104,7 @@ impl Debug for Sha1Hash {
 
 impl Display for Sha1Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(&*hex::encode(self.0))
+        f.write_str(&*self.to_hex_string())
     }
 }
 

@@ -27,6 +27,7 @@ askama.workspace = true
 askama_axum.workspace = true
 axum.workspace = true
 bzip2.workspace = true
+chrono.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 futures.workspace = true

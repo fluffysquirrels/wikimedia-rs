@@ -40,6 +40,10 @@ use wikimedia_store::{self as store, index, StorePageId};
 pub struct Args {
     #[clap(flatten)]
     common: CommonArgs,
+
+    /// Open the index of the web server in your browser.
+    #[arg(long, default_value_t = false)]
+    open: bool,
 }
 
 type WebResult<T> = StdResult<T, WebError>;
@@ -135,6 +139,13 @@ pub async fn main(args: Args) -> Result<()> {
                            .build()?;
     tracing::info!(%url,
                    "Listening on http");
+
+    if args.open {
+        let join_handle = open::that_in_background(url.to_string());
+
+        // Drop the handle so we don't leak the OS resources.
+        drop(join_handle);
+    }
 
     Server::bind(&addr)
            .serve(app.into_make_service_with_connect_info::<SocketAddr>())

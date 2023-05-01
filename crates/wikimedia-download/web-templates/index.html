@@ -1,8 +1,13 @@
 {% extends "_base.html" %}
 
 {% block content %}
-  <p><a href="/enwiki/page/by-store-id/0.0">enwiki 0.0</a></p>
-  <p><a href="/enwiki/category">enwiki categories</a></p>
-  <p><a href="/enwiki/page/by-title/The_Matrix">The Matrix</a></p>
-  <p><a href="/enwiki/page/by-id/30007">enwiki 30007</a></p>
+  <p><a href="/{{ dump_name }}/page/by-store-id/0.0">{{ dump_name }} page by store ID 0.0</a></p>
+  <p><a href="/{{ dump_name }}/category">{{ dump_name }} categories</a></p>
+  {% match dump_name.as_str() %}
+  {% when ("enwiki") %}
+    <p><a href="/{{ dump_name }}/page/by-title/The_Matrix">The Matrix on {{ dump_name }}</a></p>
+  {% when ("simplewiki") %}
+    <p><a href="/{{ dump_name }}/page/by-title/The_Matrix">The Matrix on {{ dump_name }}</a></p>
+  {% else %}
+  {% endmatch %}
 {% endblock %}

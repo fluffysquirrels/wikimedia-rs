@@ -8,7 +8,7 @@
 
 {% block content %}
 
-<div class="header-links">
+<div class="header-data">
   {% match wikimedia_url_base %}
     {% when Some with (url_base) %}
       <p><a href="{{ url_base }}/{{ slug }}">
@@ -18,7 +18,7 @@
   {% endmatch %}
 
   <p>
-       Namespace ID: {{ ns_id }}
+       Namespace: "{{ namespace.name() }}" (key: {{ namespace.key() }})
   </p>
   <p>
     {% let mediawiki_id_url = format!("/{dump_name}/page/by-id/{mediawiki_id}",
@@ -41,7 +41,7 @@
       (with debug info)</a>
   </p>
   <p>
-    {% let store_id_url = format!("/{dump_name}/page/by-id/{store_id}",
+    {% let store_id_url = format!("/{dump_name}/page/by-store-id/{store_id}",
                                   dump_name = self.dump_name,
                                   store_id = self.store_page_id) %}
     <a href="{{ store_id_url }}">
@@ -50,7 +50,6 @@
     <a href="{{ store_id_url }}?debug=true">
       (with debug info)</a>
   </p>
-</div> {# end of div.header-links #}
 
 {% match revision_id %}
   {% when Some with (revision_id) %}
@@ -83,6 +82,8 @@
     </p>
   {% when None %}
 {% endmatch %}
+
+</div> {# end of div.header-data #}
 
 <p>Wikitext:</p>
 <pre><code>{{ wikitext }}</code></pre>

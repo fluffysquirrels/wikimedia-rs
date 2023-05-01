@@ -9,7 +9,7 @@ struct Chunk @0xeb1770b3ac9e2969 {
 }
 
 struct Page @0xb7be16a98c43512e {
-  nsId @0 :UInt64;
+  nsId @0 :Int64;
   id @1 :UInt64;
   title @2 :Text;
   revision @3 :Revision;

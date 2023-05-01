@@ -1,5 +1,8 @@
 //! Data types used in Wikimedia data dumps and their metadata.
 
+mod namespace;
+pub use namespace::Namespace;
+
 use chrono::{DateTime, FixedOffset};
 use crate::{
     Error,
@@ -89,7 +92,7 @@ pub struct JobName(pub String);
 
 #[derive(Clone, Debug, Serialize)]
 pub struct Page {
-    pub ns_id: u64,
+    pub ns_id: i64,
     pub id: u64,
     pub title: String,
     pub revision: Option<Revision>,
@@ -179,5 +182,9 @@ impl Page {
         self.revision.as_ref()
             .and_then(|r| r.text.as_ref())
             .map(|t| t.as_str())
+    }
+
+    pub fn namespace(&self) -> Result<Namespace> {
+        Namespace::from_key(self.ns_id)
     }
 }

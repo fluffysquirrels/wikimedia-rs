@@ -266,13 +266,18 @@ async fn router_fallback() -> impl IntoResponse {
 
 #[derive(askama::Template)]
 #[template(path = "index.html")]
-struct IndexHtml<'a> {
-    title: &'a str,
+struct IndexHtml {
+    title: String,
+    dump_name: String,
 }
 
-async fn get_index() -> impl IntoResponse {
+async fn get_index(
+    State(state): State<Arc<WebState>>,
+) -> impl IntoResponse {
+    let dump_name = state.store_dump_name().0;
     IndexHtml {
-        title: "Index",
+        title: format!("Index for {dump_name}"),
+        dump_name,
     }
 }
 
@@ -447,7 +452,7 @@ struct PageHtml {
 struct PageDebugHtml {
     title: String,
 
-    ns_id: u64,
+    namespace: dump::Namespace,
     mediawiki_id: u64,
     slug: String,
     store_page_id: StorePageId,
@@ -492,9 +497,13 @@ fn response_from_mapped_page(
 
         Either::Right(Either::Left({
             let html = PageDebugHtml {
-                title: page_dump.title,
+                title: format!("{title} - debug info", title = page_dump.title),
 
-                ns_id: page_dump.ns_id,
+                namespace:
+                    match page_dump.namespace() {
+                        Ok(ns) => ns,
+                        Err(e) => return Either::Left(Either::Right(future::err(e.into()))),
+                    },
                 mediawiki_id: page_dump.id,
                 slug,
                 store_page_id,

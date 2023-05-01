@@ -8,16 +8,16 @@
 ## Must do before publishing
 
 * wmd web
+    * Browse by title.
     * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
+        * Now need to redirect to collated title if there is only one, else show a list.
     * category by title should redirect to category url
     * Redirects
     * Title search, click Category page, should take to category page list.
     * Rewrite fragment links (we add a `wikitext-` prefix)
     * Debug info
-        * ns_id
         * namespace name
-    * 404 page for no route match
-    * 404 page for pages by slug should link to enwiki.
+    * 404 page for pages by slug should link to source wiki.
     * Error logging for WebError.
     * Browsable
     * Don't show error details to non-local hosts
@@ -33,6 +33,12 @@
     * https://docs.rs/tower-http/latest/tower_http/catch_panic/index.html
     * Error handling
     * Templates in wikitext
+        * Improvements options for rendering:
+            * Just show wikitext (replace `{{foo}}` with
+              `<code>{{ foo }}</code>` before rendering with pandoc)
+            * Do some template basic transclusion
+            * Find a better renderer than pandoc
+            * Special case some stuff?
         * https://www.mediawiki.org/wiki/Help:Templates
         * from <http://localhost:8089/simplewiki/page/by-title/The_Matrix?debug=true>:
           `<ref>{{cite web|url=http://www.sundaytimes.lk/080615/Mirror/mirror006.html|title= Behind Matrixism|author=Kotelawala, Himal|publisher= The Sunday Times Sri Lanka|date=14 June 2008|accessdate=2008-06-19}}</ref>`
@@ -164,6 +170,7 @@
 
 ### Features
 
+* Store import file name, import file offset with each page.
 * Sync https://www.mediawiki.org/wiki/
 * What links here?
 * Namespace browsing
@@ -219,10 +226,6 @@
     * One shot download and import, option to keep raw dumps or only
       have one .xml.bz2 on disk during import.
     * daemon or cronjob
-    * `<page>` sha1 hash check. It's the text between `<text>HERE</text>`,
-      XML entity decoded, then SHA1 summed, then encoded in base 36.
-        * `wmd get-dump-page --job-file out/job-multistream/zstd/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.zstd --compression zstd --out json-with-body --limit 1 | jq '.revision.text' -r | head -c -1 | sha1sum | awk '{print $1}'`
-        * === `SHA1_BASE36=$(zstdcat out/job-multistream/zstd/enwiki-20230320-pages-articles-multistream1.xml-p1p41242.zstd| head -c 10000 | grep  -P -e  '(?<=<sha1\>)[^<]+(?=\</sha1\>)' -o | head -n1); python3.8 -c "print(hex(int(\"${SHA1_BASE36}\", base=36))[2:])"`
 * scheduled work
     * cron or a daemon that has a job scheduler
     * https://crates.io/crates/background-jobs-core
@@ -460,9 +463,18 @@
 
 ### Misc
 
-* Look into other sites
-    * https://meta.wikimedia.org/wiki/Wikimedia_projects
-    * : wiktionary, meta.wikimedia, mediawiki docs, wikisource, wikibooks, wikiquote, wikimedia commons
+* Other dumps:
+    * commonswiki
+    * enwiktionary
+    * mediawikiwiki
+    * metawiki
+    * specieswiki
+    * wikidatawiki
+
+    * Look into other sites
+        * https://meta.wikimedia.org/wiki/Wikimedia_projects
+        * : wiktionary, meta.wikimedia, mediawiki docs, wikisource, wikibooks, wikiquote, wikimedia commons
+        * wikidata
 * https://wikitech.wikimedia.org/wiki/Main_Page
 * Wikimedia APIs
     * https://meta.wikimedia.org/wiki/Research:Data

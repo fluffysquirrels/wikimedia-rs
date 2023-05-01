@@ -181,8 +181,8 @@ pub mod page {
       self.reader.total_size()
     }
     #[inline]
-    pub fn get_ns_id(self) -> u64 {
-      self.reader.get_data_field::<u64>(0)
+    pub fn get_ns_id(self) -> i64 {
+      self.reader.get_data_field::<i64>(0)
     }
     #[inline]
     pub fn get_id(self) -> u64 {
@@ -253,12 +253,12 @@ pub mod page {
       self.builder.as_reader().total_size()
     }
     #[inline]
-    pub fn get_ns_id(self) -> u64 {
-      self.builder.get_data_field::<u64>(0)
+    pub fn get_ns_id(self) -> i64 {
+      self.builder.get_data_field::<i64>(0)
     }
     #[inline]
-    pub fn set_ns_id(&mut self, value: u64)  {
-      self.builder.set_data_field::<u64>(0, value);
+    pub fn set_ns_id(&mut self, value: i64)  {
+      self.builder.set_data_field::<i64>(0, value);
     }
     #[inline]
     pub fn get_id(self) -> u64 {

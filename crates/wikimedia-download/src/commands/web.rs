@@ -116,10 +116,7 @@ pub async fn main(args: Args) -> Result<()> {
 
         .route("/test_panic", routing::get(|| async { panic!("Test panic") }))
 
-        // .layer(
-        //     tower::ServiceBuilder::new()
-        //         .layer(HandleErrorLayer::new(oops))
-        // )
+        .fallback(router_fallback)
 
         .with_state(state)
 
@@ -261,6 +258,10 @@ fn handle_panic(err: Box<dyn Any + Send + 'static>) -> Response {
     tracing::error!("panic: {s}");
 
     _500_response(&format!("panic: {s}"))
+}
+
+async fn router_fallback() -> impl IntoResponse {
+    _404_response(&"Route not found")
 }
 
 #[derive(askama::Template)]

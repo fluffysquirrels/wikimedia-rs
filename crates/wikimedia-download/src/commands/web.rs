@@ -218,6 +218,11 @@ fn _404_response(msg: &dyn Display) -> Response {
 fn error_response(title: &'static str, msg: &dyn Display, status: StatusCode) -> Response {
     let msg = msg.to_string();
 
+    tracing::error!(%title, %msg,
+                    status_u16 = status.as_u16(),
+                    status_str = status.as_str(),
+                    "web::error_response");
+
     let template = ErrorHtml {
         title: title,
         message: &*msg,

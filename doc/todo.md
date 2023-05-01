@@ -15,10 +15,7 @@
     * Redirects
     * Title search, click Category page, should take to category page list.
     * Rewrite fragment links (we add a `wikitext-` prefix)
-    * Debug info
-        * namespace name
     * 404 page for pages by slug should link to source wiki.
-    * Error logging for WebError.
     * Browsable
     * Don't show error details to non-local hosts
     * Separate web request log

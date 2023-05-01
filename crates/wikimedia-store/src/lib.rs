@@ -391,7 +391,7 @@ impl Store {
             // Store current stats
             chunk_bytes_total = Bytes(chunk_bytes_total_curr).as_value(),
             pages_total = pages_total_curr,
-            chunks_len = Bytes(chunks_len_curr).as_value(),
+            chunks_len = chunks_len_curr,
 
             // Import total raw stats
             total_source_bytes_read = Bytes(total_source_bytes_read_curr).as_value(),

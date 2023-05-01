@@ -153,7 +153,7 @@ impl Index {
                     .col(ColumnDef::new(CategoryIden::Slug)
                              .text()
                              .not_null()
-                             .extra("COLLATE NOCASE".to_string())
+                             // .extra("COLLATE NOCASE".to_string())
                              .primary_key())
                     .build(SqliteQueryBuilder)
                     + " STRICT, WITHOUT ROWID",
@@ -175,7 +175,8 @@ impl Index {
                     .col(ColumnDef::new(PageIden::Slug)
                             .text()
                             .not_null()
-                            .extra("COLLATE NOCASE".to_string()))
+                            // .extra("COLLATE NOCASE".to_string())
+                    )
                     .build(SqliteQueryBuilder)
                     + " STRICT",
                 sea_query::Index::create()
@@ -207,7 +208,8 @@ impl Index {
                     .col(ColumnDef::new(PageCategoriesIden::CategorySlug)
                              .text()
                              .not_null()
-                             .extra("COLLATE NOCASE".to_string()))
+                             // .extra("COLLATE NOCASE".to_string())
+                    )
                     .primary_key(sea_query::Index::create()
                                      .col(PageCategoriesIden::MediawikiId)
                                      .col(PageCategoriesIden::CategorySlug)

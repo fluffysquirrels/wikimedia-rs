@@ -41,8 +41,9 @@ use tracing::Level;
 use valuable::Valuable;
 
 struct FilePageIter<R: BufRead> {
-    xml_read: quick_xml::reader::Reader<R>,
     buf: Vec<u8>,
+    file_path: PathBuf,
+    xml_read: quick_xml::reader::Reader<R>,
 }
 
 pub struct JobFiles {
@@ -270,22 +271,23 @@ impl FileSpec {
         let (prog_read, source_bytes_read) = ProgressReader::new(file_read);
         let file_bufread = BufReader::with_capacity(128 * 1024, prog_read);
 
-        fn into_page_iter<T>(inner: T
+        fn into_page_iter<T>(file_path: &Path, inner: T
         ) -> Box<dyn Iterator<Item = Result<Page>> + Send>
             where T: BufRead + Send + 'static
         {
             let xml_buf = Vec::<u8>::with_capacity(100_000);
             let xml_read = quick_xml::reader::Reader::from_reader(inner);
             let page_iter = FilePageIter {
-                xml_read,
                 buf: xml_buf,
+                file_path: file_path.to_path_buf(),
+                xml_read,
             }.boxed_send();
             page_iter
         }
 
         let (uncompressed_bytes_read, pages_iter) = match self.compression {
             Compression::None => {
-                (source_bytes_read.clone(), into_page_iter(file_bufread))
+                (source_bytes_read.clone(), into_page_iter(&*self.path, file_bufread))
             },
             Compression::Bzip2 => {
                 let bzip_decoder = bzip2::bufread::MultiBzDecoder::new(file_bufread);
@@ -294,7 +296,7 @@ impl FileSpec {
                     ProgressReader::new(bzip_decoder);
 
                 let bzip_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
-                (uncompressed_bytes_read, into_page_iter(bzip_bufread))
+                (uncompressed_bytes_read, into_page_iter(&*self.path, bzip_bufread))
             },
             Compression::LZ4 => {
                 let lz4_decoder = lz4_flex::frame::FrameDecoder::new(file_bufread);
@@ -303,7 +305,7 @@ impl FileSpec {
                     ProgressReader::new(lz4_decoder);
 
                 let lz4_bufread = BufReader::with_capacity(64 * 1024, uncompressed_prog_read);
-                (uncompressed_bytes_read, into_page_iter(lz4_bufread))
+                (uncompressed_bytes_read, into_page_iter(&*self.path, lz4_bufread))
             }
             Compression::Zstd => {
                 let zstd_decoder = zstd::stream::read::Decoder::with_buffer(file_bufread)?;
@@ -314,7 +316,7 @@ impl FileSpec {
                 let capacity = zstd::stream::read::Decoder::<'_, std::io::Empty>
                                    ::recommended_output_size();
                 let zstd_bufread = BufReader::with_capacity(capacity, uncompressed_prog_read);
-                (uncompressed_bytes_read, into_page_iter(zstd_bufread))
+                (uncompressed_bytes_read, into_page_iter(&*self.path, zstd_bufread))
             }
         };
 
@@ -383,7 +385,7 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
                     let page_start_pos = pos;
                     self.buf.clear();
                     let mut page_title: Option<String> = None;
-                    let mut page_ns_id: Option<u64> = None;
+                    let mut page_ns_id: Option<i64> = None;
                     let mut page_id: Option<u64> = None;
                     let mut revision: Option<Revision> = None;
                     loop {
@@ -397,7 +399,7 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
                                 page_ns_id = Some(try_iter!(try_iter!(
                                     take_element_text(&mut self.xml_read,
                                                       &mut self.buf,
-                                                      b"ns")).parse::<u64>()));
+                                                      b"ns")).parse::<i64>()));
                             },
                             Event::Start(b) if b.name().as_ref() == b"id" => {
                                 page_id = Some(try_iter!(try_iter!(
@@ -479,6 +481,7 @@ impl<R: BufRead> Iterator for FilePageIter<R> {
                                                 ?page_title,
                                                 ?page_id,
                                                 page_start_pos,
+                                                file_path = %self.file_path.display(),
                                                 "Dump page revision text SHA1 hash did not \
                                                  match expected.");
                                         }

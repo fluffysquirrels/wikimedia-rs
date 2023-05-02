@@ -91,7 +91,6 @@ struct Category {
 }
 
 impl Page {
-    #[allow(dead_code)] // Not used yet.
     pub fn store_id(&self) -> StorePageId {
         StorePageId {
             chunk_id: ChunkId(self.chunk_id),
@@ -153,7 +152,6 @@ impl Index {
                     .col(ColumnDef::new(CategoryIden::Slug)
                              .text()
                              .not_null()
-                             // .extra("COLLATE NOCASE".to_string())
                              .primary_key())
                     .build(SqliteQueryBuilder)
                     + " STRICT, WITHOUT ROWID",
@@ -175,17 +173,14 @@ impl Index {
                     .col(ColumnDef::new(PageIden::Slug)
                             .text()
                             .not_null()
-                            // .extra("COLLATE NOCASE".to_string())
                     )
                     .build(SqliteQueryBuilder)
                     + " STRICT",
-                sea_query::Index::create()
-                    .name("index_page_by_slug")
-                    .if_not_exists()
-                    .table(PageIden::Table)
-                    .col(PageIden::Slug)
-                    .unique()
-                    .build(SqliteQueryBuilder),
+                format!(r#"
+                    CREATE INDEX IF NOT EXISTS index_page_by_slug ON {page_table}
+                    ({page_slug} COLLATE NOCASE)
+                "#, page_table = PageIden::Table.to_string(),
+                    page_slug = PageIden::Slug.to_string()),
 
                 // Table page_fts (with FTS5)
                 format!(r#"
@@ -208,7 +203,6 @@ impl Index {
                     .col(ColumnDef::new(PageCategoriesIden::CategorySlug)
                              .text()
                              .not_null()
-                             // .extra("COLLATE NOCASE".to_string())
                     )
                     .primary_key(sea_query::Index::create()
                                      .col(PageCategoriesIden::MediawikiId)
@@ -411,11 +405,66 @@ impl Index {
     pub(crate) fn get_store_page_id_by_slug(&self, slug: &str) -> Result<Option<StorePageId>> {
         let query = Query::select()
             .from(PageIden::Table)
+            .column(PageIden::MediawikiId)
             .column(PageIden::ChunkId)
             .column(PageIden::PageChunkIndex)
-            .and_where(Expr::col(PageIden::Slug).eq(slug))
+            .column(PageIden::Slug)
+            .and_where(Expr::col(PageIden::Slug).like(slug))
+            .limit(100)
             .take();
-        self.single_row_select_to_store_page_id(query)
+
+        let (sql, params) = query.build_rusqlite(SqliteQueryBuilder);
+        let params2 = &*params.as_params();
+
+        let conn = self.conn()?;
+
+        let mut statement = conn.prepare_cached(&*sql)?;
+        let mut rows = statement.query(params2)?;
+
+        let mut out = Vec::<Page>::with_capacity(8);
+
+        while let Some(row) = rows.next()? {
+            let page = Page {
+                mediawiki_id: row.get(0)?,
+                chunk_id: row.get(1)?,
+                page_chunk_index: row.get(2)?,
+                slug: row.get(3)?,
+            };
+
+            out.push(page);
+        }
+
+        let out_len = out.len();
+        match out_len {
+            0 => Ok(None),
+            1 => {
+                let page = out.first().expect("out.len == 1");
+                Ok(Some(page.store_id()))
+            },
+            _ => {
+                let exact_pages: Vec<Page> = out.into_iter().filter(|p| p.slug == slug).collect();
+                tracing::debug!(
+                    out_len,
+                    exact_pages_len = exact_pages.len(),
+                    %slug,
+                    "get_store_page_id_by_slug: exact_pages filter");
+                match exact_pages.len() {
+                    0 => Ok(None),
+                    1 => {
+                        let page = exact_pages.first().expect("exact_pages.len == 1");
+                        Ok(Some(page.store_id()))
+                    },
+                    _ => {
+                        tracing::warn!(
+                            out_len,
+                            exact_pages_len = exact_pages.len(),
+                            %slug,
+                            "get_store_page_id_by_slug: more than 1 exact match");
+                        Ok(None)
+                    },
+                }
+            }
+        }
     }
 
     pub(crate) fn page_search(&self, query: &str, limit: Option<u64>

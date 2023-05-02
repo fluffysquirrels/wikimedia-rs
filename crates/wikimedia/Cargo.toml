@@ -23,6 +23,7 @@ derive_builder.workspace = true
 encoding_rs.workspace = true
 futures.workspace = true
 hex.workspace = true
+html-escape.workspace = true
 http-cache-reqwest.workspace = true
 human_format.workspace = true
 iterator-ext.workspace = true

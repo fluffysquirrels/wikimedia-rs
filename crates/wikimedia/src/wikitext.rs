@@ -67,6 +67,8 @@ $body$
 
     let wikitext = page.revision_text().unwrap_or("");
 
+    let wikitext = escape_templates(wikitext);
+
     let mut child =
         tokio::process::Command::new("pandoc")
             .args(&[
@@ -147,4 +149,39 @@ pub fn parse_categories(
     vec.sort();
     vec.dedup();
     vec
+}
+
+fn escape_templates(wikitext: &str) -> String {
+    fn replacer<'t>(caps: &regex::Captures<'t>) -> String {
+        let inner = caps.get(0).expect("regex capture 0").as_str();
+        let inner = html_escape::encode_text(inner);
+        format!("<pre>{inner}</pre>")
+    }
+
+    // TODO: This doesn't handle nested template invocations.
+    lazy_regex!(r#"\{\{[^}]+\}\}"#).replace_all(wikitext, replacer).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_templates;
+
+    #[test]
+    fn escape_templates_cases() {
+        let cases: &[(&str, &str)] = [
+            ("", ""),
+            ("asdf", "asdf"),
+            ("{{a}}", "<pre>{{a}}</pre>"),
+            ("{{<pre>a</pre>}}", "<pre>{{&lt;pre&gt;a&lt;/pre&gt;}}</pre>"),
+        ].as_slice();
+
+        for (input, expected) in cases.into_iter() {
+            let out = escape_templates(input);
+            println!("\nCase:\n\
+                      |   in:       '{input}'\n\
+                      |   out:      '{out}'\n\
+                      |   expected: '{expected}'\n");
+            assert_eq!(out, *expected);
+        }
+    }
 }

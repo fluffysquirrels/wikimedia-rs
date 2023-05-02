@@ -2,15 +2,17 @@
 
 ## WIP
 
-* page.revision.sha1 round trip: dump -> dump::page -> chunk::page -> dump::page -> web
 * Title search with FTS
+    * Paging
 
 ## Must do before publishing
 
 * wmd web
     * Browse by title.
     * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
-        * Now need to redirect to collated title if there is only one, else show a list.
+        * Capitalise first letter.
+        * Now need to redirect to collated title if there is only one, else show a list.  
+          http://localhost:8089/simplewiki/page/by-title/flower should show page with slug "Flower".
     * category by title should redirect to category url
     * Redirects
     * Title search, click Category page, should take to category page list.
@@ -31,8 +33,9 @@
     * Error handling
     * Templates in wikitext
         * Improvements options for rendering:
-            * Just show wikitext (replace `{{foo}}` with
-              `<code>{{ foo }}</code>` before rendering with pandoc)
+            * [x] Just show wikitext (replace `{{foo}}` with
+                  `<code>{{ foo }}</code>` before rendering with pandoc)
+                * [ ] Over-encoding of HTML tags within templates.
             * Do some template basic transclusion
             * Find a better renderer than pandoc
             * Special case some stuff?
@@ -152,13 +155,20 @@
 * Case insensitive titles
     * Redirect in web when title is not canonical.
 
-* Images  
-  Options:
-    * On demand (web page render) get download URL from API
-    * Batch import all enwiki download URLs from API during import
-    * Batch import just the files the pages link to from API during import
-    * Batch download all enwiki images during import
-        * Possibly re-encode large images to save space
+* Images
+    * URL is constructed with the first few hex digits of the md5sum of the page title  
+      Example file: `File:Gray1167.svg`  
+      File info URL: https://simple.wikipedia.org/wiki/File:Gray1167.svg  
+      md5sum of `File:Gray1167.svg` is `f7cb8975dc991b5121b8422244643331`  
+      Download URL: https://upload.wikimedia.org/wikipedia/commons/f/f7/Gray1167.svg  
+      Preview png URL: https://upload.wikimedia.org/wikipedia/commons/thumb/f/f7/Gray1167.svg/553px-Gray1167.svg.png
+
+    * Options:
+        * On demand (web page render) get download URL from API
+        * Batch import all enwiki download URLs from API during import
+        * Batch import just the files the pages link to from API during import
+        * Batch download all enwiki images during import
+            * Possibly re-encode large images to save space
 * Clean up old files
     * In http_cache: `find http_cache -type f -mtime +5`
     * In temp directories from crashes and bugs.

@@ -8,11 +8,15 @@
 ## Must do before publishing
 
 * wmd web
+    * Follow redirects
+        * Parse and round-trip redirect title from XML
+        * Follow redirects in wmd web
     * Browse by title.
     * Page capitalisation case sensitivity: http://localhost:8089/enwiki/page/by-title/Science_fiction_film?debug=true
-        * Capitalise first letter.
+        * Auto-capitalise first letter.
         * Now need to redirect to collated title if there is only one, else show a list.  
           http://localhost:8089/simplewiki/page/by-title/flower should show page with slug "Flower".
+            * This is wrong :(
     * category by title should redirect to category url
     * Redirects
     * Title search, click Category page, should take to category page list.
